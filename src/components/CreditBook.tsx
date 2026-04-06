@@ -133,17 +133,17 @@ export default function CreditBook() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 no-scrollbar">
           <Link 
             to="/customers"
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all shrink-0"
           >
             Manage Customers
             <ExternalLink className="w-4 h-4" />
           </Link>
-          <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 rounded-xl border border-amber-100">
-            <AlertCircle className="w-5 h-5 text-amber-600" />
-            <span className="text-sm font-bold text-amber-700">
+          <div className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-amber-50 rounded-xl border border-amber-100 shrink-0">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
+            <span className="text-xs sm:text-sm font-bold text-amber-700 whitespace-nowrap">
               Total Outstanding: {formatCurrency(customerCredits.reduce((acc, c) => acc + c.totalOwed, 0))}
             </span>
           </div>
@@ -165,11 +165,20 @@ export default function CreditBook() {
             <tbody className="divide-y divide-gray-50">
               {customerCredits.map((customer) => (
                 <React.Fragment key={customer.id}>
-                  <tr className="hover:bg-gray-50/50 transition-colors group">
+                  <tr 
+                    onClick={() => setExpandedCustomer(expandedCustomer === customer.id ? null : customer.id)}
+                    className={cn(
+                      "transition-all cursor-pointer group border-l-4",
+                      expandedCustomer === customer.id ? "bg-indigo-50/50 border-indigo-600" : "hover:bg-gray-50/80 border-transparent"
+                    )}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-indigo-600" />
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                          expandedCustomer === customer.id ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600"
+                        )}>
+                          <User className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-gray-900 text-sm truncate">{customer.name}</p>
@@ -196,7 +205,7 @@ export default function CreditBook() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                         <button 
                           onClick={() => navigate('/pos', { state: { customerId: customer.id } })}
                           className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
@@ -213,16 +222,6 @@ export default function CreditBook() {
                           title="Record Payment"
                         >
                           <DollarSign className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setExpandedCustomer(expandedCustomer === customer.id ? null : customer.id)}
-                          className={cn(
-                            "p-2 rounded-lg transition-all",
-                            expandedCustomer === customer.id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          )}
-                          title="View History"
-                        >
-                          <Receipt className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -297,11 +296,21 @@ export default function CreditBook() {
         {/* Mobile View */}
         <div className="md:hidden divide-y divide-gray-100">
           {customerCredits.map((customer) => (
-            <div key={customer.id} className="p-3 space-y-3">
+            <div 
+              key={customer.id} 
+              onClick={() => setExpandedCustomer(expandedCustomer === customer.id ? null : customer.id)}
+              className={cn(
+                "p-3 space-y-3 transition-all cursor-pointer border-l-4",
+                expandedCustomer === customer.id ? "bg-indigo-50/50 border-indigo-600" : "bg-white border-transparent"
+              )}
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 bg-indigo-50 rounded-full flex items-center justify-center shrink-0">
-                    <User className="w-4 h-4 text-indigo-600" />
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors",
+                    expandedCustomer === customer.id ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600"
+                  )}>
+                    <User className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 text-sm truncate">{customer.name}</p>
@@ -323,7 +332,7 @@ export default function CreditBook() {
                 </div>
               </div>
               
-              <div className="flex items-center justify-between gap-2 pt-1">
+              <div className="flex items-center justify-between gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
                 <button 
                   onClick={() => navigate('/pos', { state: { customerId: customer.id } })}
                   className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold shadow-sm"
@@ -341,20 +350,10 @@ export default function CreditBook() {
                   <DollarSign className="w-3.5 h-3.5" />
                   Pay
                 </button>
-                <button
-                  onClick={() => setExpandedCustomer(expandedCustomer === customer.id ? null : customer.id)}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all",
-                    expandedCustomer === customer.id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"
-                  )}
-                >
-                  <Receipt className="w-3.5 h-3.5" />
-                  History
-                </button>
               </div>
 
               {expandedCustomer === customer.id && (
-                <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 max-h-[300px] overflow-y-auto">
+                <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 max-h-[300px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                   {[...customer.sales, ...customer.payments.map(p => ({ ...p, isPayment: true }))]
                     .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                     .map((item: any) => (
@@ -374,7 +373,7 @@ export default function CreditBook() {
                             {format(new Date(item.timestamp), 'MMM dd')}
                           </span>
                         </div>
-                        {item.notes && <p className="text-[10px] text-gray-500 truncate max-w-[120px]">"{item.notes}"</p>}
+                        {item.notes && <p className="text-[10px] text-gray-500 italic truncate max-w-[120px]">"{item.notes}"</p>}
                       </div>
                       <div className="text-right shrink-0">
                         <p className={cn("text-xs font-black", item.isPayment ? "text-green-600" : "text-gray-900")}>
