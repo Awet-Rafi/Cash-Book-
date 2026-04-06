@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Document ID: auto-generated
+    // Fields:
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - price: number (required, > 0)
+    //   - costPrice: number (required, > 0)
+    //   - stockQuantity: number (required, >= 0)
+    //   - category: string (optional)
+    //   - createdAt: timestamp (required)
+    //   - updatedAt: timestamp (required)
+    //
+    // Collection: sales
+    // Document ID: auto-generated
+    // Fields:
+    //   - items: list (required)
+    //   - totalAmount: number (required, > 0)
+    //   - totalCost: number (required, > 0)
+    //   - profit: number (required)
+    //   - timestamp: timestamp (required)
+    //   - customerName: string (optional)
+    //
+    // Collection: expenses
+    // Document ID: auto-generated
+    // Fields:
+    //   - description: string (required)
+    //   - amount: number (required, > 0)
+    //   - category: string (optional)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return true; // Open for now as requested
+    }
+
+    function isAdmin() {
+      return true; // Open for now as requested
+    }
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.price is number && data.price > 0 &&
+             data.costPrice is number && data.costPrice > 0 &&
+             data.stockQuantity is number && data.stockQuantity >= 0;
+    }
+
+    function isValidSale(data) {
+      return data.items is list && data.items.size() > 0 &&
+             data.totalAmount is number && data.totalAmount > 0 &&
+             data.totalCost is number && data.totalCost > 0 &&
+             data.profit is number &&
+             data.timestamp is timestamp &&
+             data.paymentMethod in ['cash', 'credit'];
+    }
+
+    function isValidExpense(data) {
+      return data.description is string && data.description.size() > 0 && data.description.size() < 200 &&
+             data.amount is number && data.amount > 0 &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if isAdmin() && isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSale(request.resource.data);
+      allow update: if isAdmin() && isValidSale(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidExpense(request.resource.data);
+      allow update: if isAdmin() && isValidExpense(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

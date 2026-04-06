@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Inventory item with stock and pricing information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "costPrice", "stockQuantity"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Record of a transaction.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "priceAtSale": { "type": "number" },
+              "costAtSale": { "type": "number" }
+            }
+          }
+        },
+        "totalAmount": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "profit": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "customerName": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
+        "status": { "type": "string", "enum": ["paid", "pending"] }
+      },
+      "required": ["items", "totalAmount", "totalCost", "profit", "timestamp", "paymentMethod"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Business expense tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["description", "amount", "timestamp"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer information for credit tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Repayment of credit by a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["customerId", "customerName", "amount", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of inventory products."
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Collection of sales transactions."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Collection of business expenses."
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Collection of registered customers."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Collection of customer repayments."
+    }
+  }
+}
