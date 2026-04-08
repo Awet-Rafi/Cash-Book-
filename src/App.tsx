@@ -20,10 +20,11 @@ import {
   Wallet,
   User as UserIcon,
   Book,
-  CreditCard
+  CreditCard,
+  Users
 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
-import { collection, onSnapshot, query, orderBy, limit, getDocFromServer, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, getDocFromServer, doc, where } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import { cn, formatCurrency } from './lib/utils';
 import { Product, Sale, Expense } from './types';
@@ -38,15 +39,22 @@ import CreditBook from './components/CreditBook';
 import CashBook from './components/CashBook';
 import Customers from './components/Customers';
 import ReceiptBook from './components/ReceiptBook';
+import MemberManagement from './components/MemberManagement';
 
 // Auth Context
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
+  role: 'admin' | 'operator' | 'viewer';
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true, isAdmin: false });
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  loading: true, 
+  isAdmin: false,
+  role: 'viewer'
+});
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -100,6 +108,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { name: 'Cash Book', path: '/cash-book', icon: DollarSign },
     { name: 'Receipt Book', path: '/receipt-book', icon: Receipt },
     { name: 'Customers', path: '/customers', icon: UserIcon },
+    { name: 'Team Members', path: '/members', icon: Users },
     { name: 'Expenses', path: '/expenses', icon: Wallet },
     { name: 'Reports', path: '/reports', icon: BarChart3 },
   ];
@@ -247,12 +256,10 @@ const Login = () => {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(true); // Default to admin for open access
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
-      // If user is logged in, we can still use their info, otherwise we're in "Open" mode
       setLoading(false);
     });
 
@@ -291,7 +298,7 @@ export default function App() {
   } as any;
 
   return (
-    <AuthContext.Provider value={{ user: activeUser, loading, isAdmin }}>
+    <AuthContext.Provider value={{ user: activeUser, loading, isAdmin: true, role: 'admin' }}>
       <ErrorBoundary>
         <Router>
           <Layout>
@@ -303,6 +310,7 @@ export default function App() {
               <Route path="/cash-book" element={<CashBook />} />
               <Route path="/receipt-book" element={<ReceiptBook />} />
               <Route path="/customers" element={<Customers />} />
+              <Route path="/members" element={<MemberManagement />} />
               <Route path="/expenses" element={<Expenses />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,8 +5,10 @@ import { Product, SaleItem, Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '../App';
 
 export default function POS() {
+  const { role } = useAuth();
   const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -429,11 +431,11 @@ export default function POS() {
           </div>
 
           <button 
-            disabled={cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer)}
+            disabled={cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer) || role === 'viewer'}
             onClick={handleCheckout}
             className={cn(
               "w-full py-4 text-white rounded-2xl font-black text-lg shadow-xl transition-all flex items-center justify-center gap-3",
-              (cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer))
+              (cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer) || role === 'viewer')
                 ? "bg-gray-400 cursor-not-allowed"
                 : "bg-indigo-600 shadow-indigo-100 hover:bg-indigo-700"
             )}

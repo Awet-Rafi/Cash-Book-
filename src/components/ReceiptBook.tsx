@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, writeBatch, increment } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sale } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { Search, Receipt, Calendar, User, CreditCard, DollarSign, Eye, X, Printer, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../App';
@@ -24,7 +24,7 @@ export default function ReceiptBook() {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Sale)));
       setLoading(false);
     });

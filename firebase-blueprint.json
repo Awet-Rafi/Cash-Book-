@@ -85,6 +85,19 @@
         "notes": { "type": "string" }
       },
       "required": ["customerId", "customerName", "amount", "timestamp"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Employee or team member with specific access roles.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "operator", "viewer"] },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role", "addedAt"]
     }
   },
   "firestore": {
@@ -107,6 +120,10 @@
     "/payments/{paymentId}": {
       "schema": "Payment",
       "description": "Collection of customer repayments."
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Collection of team members and their roles."
     }
   }
 }

@@ -46,6 +46,8 @@ export interface Customer {
   phone?: string;
   email?: string;
   createdAt: string;
+  updatedAt?: string;
+  memberIds?: string[];
 }
 
 export interface Payment {
@@ -55,4 +57,14 @@ export interface Payment {
   amount: number;
   timestamp: string;
   notes?: string;
+  attachmentUrl?: string;
+  attachmentType?: 'image' | 'pdf';
+}
+
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'operator' | 'viewer';
+  addedAt: string;
 }

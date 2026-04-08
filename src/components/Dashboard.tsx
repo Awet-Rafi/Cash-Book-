@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, limit, where, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product, Sale, Expense, Payment } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -43,7 +43,7 @@ export default function Dashboard() {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Sale)));
     });
 
@@ -51,7 +51,7 @@ export default function Dashboard() {
       setExpenses(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Expense)));
     });
 
@@ -59,7 +59,7 @@ export default function Dashboard() {
       setPayments(snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Payment)));
       setLoading(false);
     });

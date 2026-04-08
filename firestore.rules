@@ -41,11 +41,27 @@ service cloud.firestore {
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
-      return true; // Open for now as requested
+      return request.auth != null;
+    }
+
+    function getMemberData() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
     }
 
     function isAdmin() {
-      return true; // Open for now as requested
+      return isAuthenticated() && 
+        (getMemberData().role == 'admin' || 
+         (request.auth.token.email == "tekle.TAF@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOperator() {
+      return isAuthenticated() && 
+        (getMemberData().role == 'operator' || isAdmin());
+    }
+
+    function isViewer() {
+      return isAuthenticated() && 
+        (getMemberData().role == 'viewer' || isOperator());
     }
 
     function isValidProduct(data) {
@@ -70,48 +86,19 @@ service cloud.firestore {
              data.timestamp is timestamp;
     }
 
+    function isValidMember(data) {
+      return data.name is string && data.name.size() > 0 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['admin', 'operator', 'viewer'] &&
+             data.addedAt is timestamp;
+    }
+
     // ===============================================================
-    // Rules
+    // Rules - OPEN ACCESS FOR NOW
     // ===============================================================
 
-    match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
-    }
-
-    match /products/{productId} {
-      allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidProduct(request.resource.data);
-      allow update: if isAdmin() && isValidProduct(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /sales/{saleId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidSale(request.resource.data);
-      allow update: if isAdmin() && isValidSale(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /expenses/{expenseId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidExpense(request.resource.data);
-      allow update: if isAdmin() && isValidExpense(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /customers/{customerId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

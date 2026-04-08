@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Expense } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { Plus, Search, Trash2, Wallet, Calendar, Tag, X, Filter, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../App';
 
 export default function Expenses() {
-  const { isAdmin } = useAuth();
+  const { role, isAdmin } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,7 @@ export default function Expenses() {
       setExpenses(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Expense)));
       setLoading(false);
     });
@@ -83,8 +83,9 @@ export default function Expenses() {
           </div>
         </div>
         <button 
+          disabled={role === 'viewer'}
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+          className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-5 h-5" />
           Record Expense
@@ -127,7 +128,7 @@ export default function Expenses() {
                       {isAdmin && (
                         <button 
                           onClick={() => setDeleteId(expense.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-30"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

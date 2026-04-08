@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sale, Payment } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { Search, DollarSign, Calendar, ShoppingCart, ArrowUpRight, User, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -29,7 +29,7 @@ export default function CashBook() {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Sale)));
     });
 
@@ -40,7 +40,7 @@ export default function CashBook() {
       setPayments(snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        timestamp: (doc.data().timestamp as Timestamp).toDate().toISOString()
+        timestamp: safeTimestamp(doc.data().timestamp)
       } as Payment)));
       setLoading(false);
     });

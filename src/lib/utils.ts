@@ -11,3 +11,11 @@ export function formatCurrency(amount: number) {
     currency: 'USD',
   }).format(amount);
 }
+
+export function safeTimestamp(timestamp: any): string {
+  if (!timestamp) return new Date().toISOString();
+  if (typeof timestamp.toDate === 'function') {
+    return timestamp.toDate().toISOString();
+  }
+  return new Date(timestamp).toISOString();
+}

@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product } from '../types';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { Plus, Search, Edit2, Trash2, Package, Filter, MoreVertical, X, AlertCircle } from 'lucide-react';
 import { useAuth } from '../App';
 
 export default function Inventory() {
-  const { isAdmin } = useAuth();
+  const { role, isAdmin } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,7 +26,12 @@ export default function Inventory() {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      setProducts(snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        createdAt: safeTimestamp(doc.data().createdAt),
+        updatedAt: safeTimestamp(doc.data().updatedAt)
+      } as Product)));
       setLoading(false);
     });
     return unsub;
