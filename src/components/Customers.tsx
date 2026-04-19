@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Customer } from '../types';
 import { Plus, Search, Edit2, Trash2, User, X, Phone, Mail } from 'lucide-react';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { safeTimestamp } from '../lib/utils';
 
 export default function Customers() {
-  const { role, isAdmin } = useAuth();
+  const { isAdmin, businessId } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -24,7 +24,9 @@ export default function Customers() {
   });
 
   useEffect(() => {
-    const unsub = onSnapshot(query(collection(db, 'customers'), orderBy('name', 'asc')), (snapshot) => {
+    if (!businessId) return;
+    const q = query(collection(db, 'customers'), where('businessId', '==', businessId), orderBy('name', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -60,7 +62,9 @@ export default function Customers() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!businessId) return;
     const data = {
+      businessId,
       name: formData.name,
       phone: formData.phone,
       email: formData.email,
@@ -104,7 +108,6 @@ export default function Customers() {
           />
         </div>
         <button 
-          disabled={role === 'viewer'}
           onClick={() => handleOpenModal()}
           className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >

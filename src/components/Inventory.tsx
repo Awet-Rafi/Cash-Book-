@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
-import { Plus, Search, Edit2, Trash2, Package, Filter, MoreVertical, X, AlertCircle } from 'lucide-react';
-import { useAuth } from '../App';
+import { Plus, Search, Edit2, Trash2, Package, X, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Inventory() {
-  const { role, isAdmin } = useAuth();
+  const { isAdmin, businessId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,7 +25,9 @@ export default function Inventory() {
   });
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'products'), (snapshot) => {
+    if (!businessId) return;
+    const q = query(collection(db, 'products'), where('businessId', '==', businessId));
+    const unsub = onSnapshot(q, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -35,7 +37,7 @@ export default function Inventory() {
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [businessId]);
 
   const handleOpenModal = (product?: Product) => {
     if (product) {
@@ -57,9 +59,10 @@ export default function Inventory() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || !businessId) return;
 
     const data = {
+      businessId,
       name: formData.name,
       description: formData.description,
       price: parseFloat(formData.price),
@@ -96,6 +99,10 @@ export default function Inventory() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-gray-900">Inventory Management</h2>
+          <p className="text-sm text-gray-500">All product prices are entered and maintained in <span className="font-bold text-indigo-600">USD</span>.</p>
+        </div>
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input 
@@ -301,26 +308,32 @@ export default function Inventory() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Cost Price</label>
-                    <input 
-                      required
-                      type="number" 
-                      step="0.01"
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                      value={formData.costPrice}
-                      onChange={e => setFormData({...formData, costPrice: e.target.value})}
-                    />
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Cost Price (USD)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                      <input 
+                        required
+                        type="number" 
+                        step="0.01"
+                        className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        value={formData.costPrice}
+                        onChange={e => setFormData({...formData, costPrice: e.target.value})}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Selling Price</label>
-                    <input 
-                      required
-                      type="number" 
-                      step="0.01"
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                      value={formData.price}
-                      onChange={e => setFormData({...formData, price: e.target.value})}
-                    />
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Selling Price (USD)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
+                      <input 
+                        required
+                        type="number" 
+                        step="0.01"
+                        className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        value={formData.price}
+                        onChange={e => setFormData({...formData, price: e.target.value})}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1">

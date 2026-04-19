@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, Timestamp, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sale, Expense } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
@@ -8,9 +8,7 @@ import {
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  Calendar, 
   Download,
-  Filter,
   ChevronRight,
   ChevronLeft,
   FileText,
@@ -45,7 +43,10 @@ import {
   endOfYear
 } from 'date-fns';
 
+import { useAuth } from '../contexts/AuthContext';
+
 export default function Reports() {
+  const { businessId } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,9 @@ export default function Reports() {
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
 
   useEffect(() => {
-    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('timestamp', 'desc')), (snapshot) => {
+    if (!businessId) return;
+
+    const unsubSales = onSnapshot(query(collection(db, 'sales'), where('businessId', '==', businessId), orderBy('timestamp', 'desc')), (snapshot) => {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -63,7 +66,7 @@ export default function Reports() {
       } as Sale)));
     });
 
-    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+    const unsubExpenses = onSnapshot(query(collection(db, 'expenses'), where('businessId', '==', businessId)), (snapshot) => {
       setExpenses(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -76,7 +79,7 @@ export default function Reports() {
       unsubSales();
       unsubExpenses();
     };
-  }, []);
+  }, [businessId]);
 
   const yearStart = startOfYear(new Date(selectedYear, 0, 1));
   const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
@@ -92,10 +95,19 @@ export default function Reports() {
     const monthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: mStart, end: mEnd }));
     const monthExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: mStart, end: mEnd }));
 
-    const revenue = monthSales.reduce((acc, s) => acc + s.totalAmount, 0);
-    const cost = monthSales.reduce((acc, s) => acc + s.totalCost, 0);
+    const revenue = monthSales.reduce((acc, s) => {
+      const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
+      return acc + amountUSD;
+    }, 0);
+    const cost = monthSales.reduce((acc, s) => {
+      const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
+      return acc + costUSD;
+    }, 0);
     const grossProfit = revenue - cost;
-    const expenseTotal = monthExpenses.reduce((acc, e) => acc + e.amount, 0);
+    const expenseTotal = monthExpenses.reduce((acc, e) => {
+      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+      return acc + amountUSD;
+    }, 0);
     const netProfit = grossProfit - expenseTotal;
 
     return {
@@ -115,10 +127,19 @@ export default function Reports() {
     const daySales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: dStart, end: dEnd }));
     const dayExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: dStart, end: dEnd }));
 
-    const revenue = daySales.reduce((acc, s) => acc + s.totalAmount, 0);
-    const cost = daySales.reduce((acc, s) => acc + s.totalCost, 0);
+    const revenue = daySales.reduce((acc, s) => {
+      const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
+      return acc + amountUSD;
+    }, 0);
+    const cost = daySales.reduce((acc, s) => {
+      const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
+      return acc + costUSD;
+    }, 0);
     const grossProfit = revenue - cost;
-    const expenseTotal = dayExpenses.reduce((acc, e) => acc + e.amount, 0);
+    const expenseTotal = dayExpenses.reduce((acc, e) => {
+      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+      return acc + amountUSD;
+    }, 0);
     const netProfit = grossProfit - expenseTotal;
 
     return {
@@ -140,7 +161,8 @@ export default function Reports() {
   const expenseByCategory = expenses
     .filter(e => isWithinInterval(new Date(e.timestamp), { start: currentIntervalStart, end: currentIntervalEnd }))
     .reduce((acc: any, e) => {
-      acc[e.category] = (acc[e.category] || 0) + e.amount;
+      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+      acc[e.category] = (acc[e.category] || 0) + amountUSD;
       return acc;
     }, {});
 

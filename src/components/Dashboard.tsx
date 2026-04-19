@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, where, Timestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, onSnapshot, query, orderBy, where, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product, Sale, Expense, Payment } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
@@ -15,8 +15,6 @@ import {
   Wallet
 } from 'lucide-react';
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -27,7 +25,10 @@ import {
 } from 'recharts';
 import { startOfMonth, endOfMonth, format, subMonths, isWithinInterval } from 'date-fns';
 
+import { useAuth } from '../contexts/AuthContext';
+
 export default function Dashboard() {
+  const { businessId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -35,11 +36,20 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    if (!businessId) return;
+
+    const twoMonthsAgo = subMonths(new Date(), 2);
+
+    const unsubProducts = onSnapshot(query(collection(db, 'products'), where('businessId', '==', businessId)), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     });
 
-    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('timestamp', 'desc')), (snapshot) => {
+    const unsubSales = onSnapshot(query(
+      collection(db, 'sales'), 
+      where('businessId', '==', businessId), 
+      orderBy('timestamp', 'desc'),
+      limit(500)
+    ), (snapshot) => {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -47,7 +57,12 @@ export default function Dashboard() {
       } as Sale)));
     });
 
-    const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
+    const unsubExpenses = onSnapshot(query(
+      collection(db, 'expenses'), 
+      where('businessId', '==', businessId),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    ), (snapshot) => {
       setExpenses(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
@@ -55,7 +70,12 @@ export default function Dashboard() {
       } as Expense)));
     });
 
-    const unsubPayments = onSnapshot(collection(db, 'payments'), (snapshot) => {
+    const unsubPayments = onSnapshot(query(
+      collection(db, 'payments'), 
+      where('businessId', '==', businessId),
+      orderBy('timestamp', 'desc'),
+      limit(300)
+    ), (snapshot) => {
       setPayments(snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -70,52 +90,105 @@ export default function Dashboard() {
       unsubExpenses();
       unsubPayments();
     };
-  }, []);
+  }, [businessId]);
 
-  const now = new Date();
-  const thisMonthStart = startOfMonth(now);
-  const thisMonthEnd = endOfMonth(now);
-  const lastMonthStart = startOfMonth(subMonths(now, 1));
-  const lastMonthEnd = endOfMonth(subMonths(now, 1));
+  const {
+    currentMonthRevenue,
+    currentMonthCash,
+    currentMonthExpenses,
+    cashInHand,
+    outstandingCredit,
+    lowStockProducts,
+    revenueGrowth,
+    currentMonthSalesCount,
+    lastMonthSalesCount,
+    chartData
+  } = useMemo(() => {
+    const now = new Date();
+    const thisMonthStart = startOfMonth(now);
+    const thisMonthEnd = endOfMonth(now);
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
 
-  const currentMonthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: thisMonthStart, end: thisMonthEnd }));
-  const lastMonthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: lastMonthStart, end: lastMonthEnd }));
-  const currentMonthPayments = payments.filter(p => isWithinInterval(new Date(p.timestamp), { start: thisMonthStart, end: thisMonthEnd }));
+    const currentMonthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: thisMonthStart, end: thisMonthEnd }));
+    const lastMonthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: lastMonthStart, end: lastMonthEnd }));
+    const currentMonthPayments = payments.filter(p => isWithinInterval(new Date(p.timestamp), { start: thisMonthStart, end: thisMonthEnd }));
 
-  const currentMonthRevenue = currentMonthSales.reduce((acc, s) => acc + s.totalAmount, 0);
-  const currentMonthRepayments = currentMonthPayments.reduce((acc, p) => acc + p.amount, 0);
-  
-  const currentMonthCash = currentMonthSales.filter(s => s.paymentMethod === 'cash').reduce((acc, s) => acc + s.totalAmount, 0) + currentMonthRepayments;
-  
-  const currentMonthExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: thisMonthStart, end: thisMonthEnd }))
-    .reduce((acc, e) => acc + e.amount, 0);
+    const currentMonthRevenue = currentMonthSales.reduce((acc, s) => {
+      if (s.currency === 'SSP') {
+        const rate = s.exchangeRate || 1000;
+        return acc + (s.totalAmount / rate);
+      }
+      return acc + s.totalAmount;
+    }, 0);
 
-  const cashInHand = currentMonthCash - currentMonthExpenses;
-  
-  const outstandingCredit = sales.filter(s => s.status === 'pending').reduce((acc, s) => acc + s.totalAmount, 0) - payments.reduce((acc, p) => acc + p.amount, 0);
+    const currentMonthRepayments = currentMonthPayments.filter(p => !p.status || p.status === 'transferred').reduce((acc, p) => {
+      return acc + (p.creditDeductionUSD ?? p.amount);
+    }, 0);
+    
+    const currentMonthCash = currentMonthSales.filter(s => s.paymentMethod === 'cash').reduce((acc, s) => {
+      if (s.currency === 'SSP') {
+        const rate = s.exchangeRate || 1000;
+        return acc + (s.totalAmount / rate);
+      }
+      return acc + s.totalAmount;
+    }, 0) + currentMonthRepayments;
+    
+    const currentMonthExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: thisMonthStart, end: thisMonthEnd }))
+      .reduce((acc, e) => {
+        if (e.currency === 'SSP') {
+          return acc + (e.amount / 1000); // Rough conversion if rate not stored
+        }
+        return acc + e.amount;
+      }, 0);
 
-  const lowStockProducts = products.filter(p => p.stockQuantity <= 5);
+    const cashInHand = currentMonthCash - currentMonthExpenses;
+    
+    const totalCreditSales = sales.filter(s => s.status === 'pending').reduce((acc, s) => {
+      if (s.currency === 'SSP') {
+        const rate = s.exchangeRate || 1000;
+        return acc + (s.totalAmount / rate);
+      }
+      return acc + s.totalAmount;
+    }, 0);
+    const totalRepayments = payments.reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
+    const outstandingCredit = totalCreditSales - totalRepayments;
 
-  const lastMonthRevenue = lastMonthSales.reduce((acc, s) => acc + s.totalAmount, 0);
-  const revenueGrowth = lastMonthRevenue === 0 ? 100 : ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
+    const lowStockProducts = products.filter(p => p.stockQuantity <= 5);
 
-  // Chart Data
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    return format(d, 'MMM dd');
-  }).reverse();
+    const lastMonthRevenue = lastMonthSales.reduce((acc, s) => acc + s.totalAmount, 0);
+    const revenueGrowth = lastMonthRevenue === 0 ? 100 : ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
 
-  const chartData = last7Days.map(day => {
-    const daySales = sales.filter(s => format(new Date(s.timestamp), 'MMM dd') === day);
-    const dayPayments = payments.filter(p => format(new Date(p.timestamp), 'MMM dd') === day);
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      return format(d, 'MMM dd');
+    }).reverse();
+
+    const chartData = last7Days.map(day => {
+      const daySales = sales.filter(s => format(new Date(s.timestamp), 'MMM dd') === day);
+      const dayPayments = payments.filter(p => format(new Date(p.timestamp), 'MMM dd') === day);
+      return {
+        name: day,
+        revenue: daySales.reduce((acc, s) => acc + s.totalAmount, 0),
+        profit: daySales.reduce((acc, s) => acc + s.profit, 0),
+        cash: daySales.filter(s => s.paymentMethod === 'cash' || s.status === 'paid').reduce((acc, s) => acc + s.totalAmount, 0) + dayPayments.reduce((acc, p) => acc + p.amount, 0),
+      };
+    });
+
     return {
-      name: day,
-      revenue: daySales.reduce((acc, s) => acc + s.totalAmount, 0),
-      profit: daySales.reduce((acc, s) => acc + s.profit, 0),
-      cash: daySales.filter(s => s.paymentMethod === 'cash' || s.status === 'paid').reduce((acc, s) => acc + s.totalAmount, 0) + dayPayments.reduce((acc, p) => acc + p.amount, 0),
+      currentMonthRevenue,
+      currentMonthCash,
+      currentMonthExpenses,
+      cashInHand,
+      outstandingCredit,
+      lowStockProducts,
+      revenueGrowth,
+      currentMonthSalesCount: currentMonthSales.length,
+      lastMonthSalesCount: lastMonthSales.length,
+      chartData
     };
-  });
+  }, [sales, payments, expenses, products]);
 
   const stats = [
     { 
@@ -149,11 +222,11 @@ export default function Dashboard() {
     },
     { 
       label: 'Monthly Sales', 
-      value: currentMonthSales.length.toString(), 
+      value: currentMonthSalesCount.toString(), 
       icon: ShoppingCart, 
       color: 'text-indigo-600', 
       bg: 'bg-indigo-50',
-      trend: lastMonthSales.length === 0 ? 100 : ((currentMonthSales.length - lastMonthSales.length) / lastMonthSales.length) * 100,
+      trend: lastMonthSalesCount === 0 ? 100 : ((currentMonthSalesCount - lastMonthSalesCount) / lastMonthSalesCount) * 100,
       trendLabel: 'vs last month'
     },
   ];
@@ -232,7 +305,7 @@ export default function Dashboard() {
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fill: '#9ca3af', fontSize: 12 }}
-                  tickFormatter={(value) => `$${value}`}
+                  tickFormatter={(value) => `$${value.toLocaleString('en-US')}`}
                 />
                 <Tooltip 
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}

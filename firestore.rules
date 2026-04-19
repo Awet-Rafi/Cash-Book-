@@ -34,6 +34,16 @@ service cloud.firestore {
     //   - amount: number (required, > 0)
     //   - category: string (optional)
     //   - timestamp: timestamp (required)
+    //   - currency: string (required, 'USD' or 'SSP')
+    //
+    // Collection: cashTransactions
+    // Document ID: auto-generated
+    // Fields:
+    //   - type: string (required, 'in' or 'out')
+    //   - amount: number (required, > 0)
+    //   - currency: string (required, 'USD' or 'SSP')
+    //   - notes: string (required)
+    //   - timestamp: timestamp (required)
     //
     // ===============================================================
 
@@ -44,61 +54,87 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getMemberData() {
-      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
-    }
-
     function isAdmin() {
       return isAuthenticated() && 
-        (getMemberData().role == 'admin' || 
-         (request.auth.token.email == "tekle.TAF@gmail.com" && request.auth.token.email_verified == true));
+             (request.auth.token.email.lower() == 'tekle.taf@gmail.com' || 
+              request.auth.token.email.lower() == 'awet16@gmail.com') && 
+             request.auth.token.email_verified == true;
     }
 
-    function isOperator() {
-      return isAuthenticated() && 
-        (getMemberData().role == 'operator' || isAdmin());
+    function getUserBusinessId() {
+      return exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.businessId
+        : null;
     }
 
-    function isViewer() {
-      return isAuthenticated() && 
-        (getMemberData().role == 'viewer' || isOperator());
-    }
-
-    function isValidProduct(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.price is number && data.price > 0 &&
-             data.costPrice is number && data.costPrice > 0 &&
-             data.stockQuantity is number && data.stockQuantity >= 0;
-    }
-
-    function isValidSale(data) {
-      return data.items is list && data.items.size() > 0 &&
-             data.totalAmount is number && data.totalAmount > 0 &&
-             data.totalCost is number && data.totalCost > 0 &&
-             data.profit is number &&
-             data.timestamp is timestamp &&
-             data.paymentMethod in ['cash', 'credit'];
-    }
-
-    function isValidExpense(data) {
-      return data.description is string && data.description.size() > 0 && data.description.size() < 200 &&
-             data.amount is number && data.amount > 0 &&
-             data.timestamp is timestamp;
-    }
-
-    function isValidMember(data) {
-      return data.name is string && data.name.size() > 0 &&
-             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
-             data.role in ['admin', 'operator', 'viewer'] &&
-             data.addedAt is timestamp;
+    function isBusinessMember(businessId) {
+      return isAuthenticated() && (getUserBusinessId() == businessId || isAdmin());
     }
 
     // ===============================================================
-    // Rules - OPEN ACCESS FOR NOW
+    // Domain Validators
+    // ===============================================================
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['businessId', 'name', 'position', 'salary', 'salaryCurrency', 'hireDate', 'status']) &&
+             data.businessId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.position is string && data.position.size() > 0 && data.position.size() < 100 &&
+             data.salary is number && data.salary >= 0 &&
+             data.salaryCurrency in ['USD', 'SSP'] &&
+             data.hireDate is string && data.hireDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['active', 'inactive'];
+    }
+
+    // ===============================================================
+    // Rules
     // ===============================================================
 
-    match /{document=**} {
-      allow read, write: if true;
+    match /userProfiles/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || getUserBusinessId() == businessId || isAdmin());
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /products/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+    
+    match /sales/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+    
+    match /expenses/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+    
+    match /customers/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+    
+    match /payments/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+    
+    match /cashTransactions/{id} {
+      allow read: if isAuthenticated() && isBusinessMember(resource.data.businessId);
+      allow write: if isAuthenticated() && isBusinessMember(request.resource.data.businessId || resource.data.businessId);
+    }
+
+    match /employees/{id} {
+      allow read: if isAuthenticated() && (isAdmin() || (resource.data.businessId != null && getUserBusinessId() == resource.data.businessId));
+      allow create: if isAuthenticated() && isValidEmployee(request.resource.data) && (isAdmin() || getUserBusinessId() == request.resource.data.businessId);
+      allow update: if isAuthenticated() && isValidEmployee(request.resource.data) && (isAdmin() || (getUserBusinessId() == resource.data.businessId && request.resource.data.businessId == resource.data.businessId));
+      allow delete: if isAuthenticated() && (isAdmin() || (resource.data.businessId != null && getUserBusinessId() == resource.data.businessId));
     }
   }
 }

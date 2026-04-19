@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy, Timestamp, doc, writeBatch, increment } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, Timestamp, doc, writeBatch, increment, updateDoc, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sale } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
-import { Search, Receipt, Calendar, User, CreditCard, DollarSign, Eye, X, Printer, Trash2 } from 'lucide-react';
+import { Search, Receipt, Calendar, User, CreditCard, DollarSign, Eye, X, Printer, Trash2, Edit3 } from 'lucide-react';
 import { format } from 'date-fns';
-import { useAuth } from '../App';
+import { useAuth } from '../contexts/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function ReceiptBook() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, businessId } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [sales, setSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -17,8 +20,11 @@ export default function ReceiptBook() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    if (!businessId) return;
+
     const unsubSales = onSnapshot(query(
       collection(db, 'sales'),
+      where('businessId', '==', businessId),
       orderBy('timestamp', 'desc')
     ), (snapshot) => {
       setSales(snapshot.docs.map(doc => ({ 
@@ -30,7 +36,19 @@ export default function ReceiptBook() {
     });
 
     return () => unsubSales();
-  }, []);
+  }, [businessId]);
+
+  useEffect(() => {
+    const state = location.state as { highlightSaleId?: string } | null;
+    if (state?.highlightSaleId && sales.length > 0) {
+      const sale = sales.find(s => s.id === state.highlightSaleId);
+      if (sale) {
+        setSelectedSale(sale);
+        // Clear state to avoid re-opening
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, sales, navigate, location.pathname]);
 
   const filteredSales = sales.filter(s => 
     s.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,7 +156,16 @@ export default function ReceiptBook() {
                       <span className="text-sm text-gray-600 capitalize">{sale.paymentMethod}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-black text-gray-900">{formatCurrency(sale.totalAmount)}</td>
+                  <td className="px-6 py-4 text-sm font-black text-gray-900">
+                    {sale.isMixed ? (
+                      <div className="flex flex-col items-start leading-tight">
+                        <span>${sale.amountUSD.toLocaleString('en-US')}</span>
+                        <span className="text-xs text-gray-400 italic font-medium">{sale.amountSSP.toLocaleString('en-US')} SSP</span>
+                      </div>
+                    ) : (
+                      formatCurrency(sale.totalAmount)
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-2 py-1 rounded text-[10px] font-bold uppercase",
@@ -194,7 +221,14 @@ export default function ReceiptBook() {
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-black text-gray-900">{formatCurrency(sale.totalAmount)}</p>
+                  {sale.isMixed ? (
+                    <div className="flex flex-col items-end leading-tight">
+                      <p className="text-sm font-black text-gray-900">${sale.amountUSD.toLocaleString('en-US')}</p>
+                      <p className="text-[10px] font-bold text-gray-400 italic">{sale.amountSSP.toLocaleString('en-US')} SSP</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-black text-gray-900">{formatCurrency(sale.totalAmount)}</p>
+                  )}
                   <div className="flex items-center justify-end gap-1 mt-0.5">
                     {sale.paymentMethod === 'cash' ? (
                       <DollarSign className="w-3 h-3 text-green-500" />
@@ -315,25 +349,50 @@ export default function ReceiptBook() {
                     <p className="text-sm font-bold text-red-600">-{formatCurrency(selectedSale.discount)}</p>
                   </div>
                 )}
-                <div className="flex items-center justify-between pt-4">
+                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                   <p className="text-lg font-bold text-gray-900">Total Amount</p>
-                  <p className="text-2xl font-black text-indigo-600">{formatCurrency(selectedSale.totalAmount)}</p>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-indigo-600">
+                      {selectedSale.isMixed ? (
+                        `$${(selectedSale.amountUSD + (selectedSale.amountSSP / (selectedSale.exchangeRate || 1000))).toLocaleString('en-US')}`
+                      ) : (
+                        formatCurrency(selectedSale.totalAmount)
+                      )}
+                    </p>
+                    {selectedSale.isMixed && (
+                      <div className="flex flex-col items-end mt-1 text-[10px] font-bold text-gray-400">
+                        <span>Paid: ${selectedSale.amountUSD.toLocaleString('en-US')}</span>
+                        <span>Paid: {selectedSale.amountSSP.toLocaleString('en-US')} SSP</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="p-6 bg-gray-50/50 border-t border-gray-100 flex gap-3">
               {isAdmin && (
-                <button 
-                  onClick={() => {
-                    setDeleteId(selectedSale.id);
-                    setSelectedSale(null);
-                  }}
-                  className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all"
-                  title="Delete Receipt"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      navigate('/pos', { state: { editSaleId: selectedSale.id } });
+                    }}
+                    className="p-3 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-100 transition-all"
+                    title="Edit Sale in POS"
+                  >
+                    <Edit3 className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setDeleteId(selectedSale.id);
+                      setSelectedSale(null);
+                    }}
+                    className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all"
+                    title="Delete Receipt"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               )}
               <button 
                 onClick={() => window.print()}

@@ -6,6 +6,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessId": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
         "price": { "type": "number" },
@@ -15,7 +16,7 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "price", "costPrice", "stockQuantity"]
+      "required": ["name", "price", "costPrice", "stockQuantity", "businessId"]
     },
     "Sale": {
       "title": "Sale",
@@ -23,6 +24,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessId": { "type": "string" },
         "items": {
           "type": "array",
           "items": {
@@ -44,7 +46,7 @@
         "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
         "status": { "type": "string", "enum": ["paid", "pending"] }
       },
-      "required": ["items", "totalAmount", "totalCost", "profit", "timestamp", "paymentMethod"]
+      "required": ["items", "totalAmount", "totalCost", "profit", "timestamp", "paymentMethod", "businessId"]
     },
     "Expense": {
       "title": "Expense",
@@ -52,12 +54,13 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessId": { "type": "string" },
         "description": { "type": "string" },
         "amount": { "type": "number" },
         "category": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["description", "amount", "timestamp"]
+      "required": ["description", "amount", "timestamp", "businessId"]
     },
     "Customer": {
       "title": "Customer",
@@ -65,12 +68,13 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name"]
+      "required": ["name", "businessId"]
     },
     "Payment": {
       "title": "Payment",
@@ -78,26 +82,54 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "businessId": { "type": "string" },
         "customerId": { "type": "string" },
         "customerName": { "type": "string" },
         "amount": { "type": "number" },
         "timestamp": { "type": "string", "format": "date-time" },
         "notes": { "type": "string" }
       },
-      "required": ["customerId", "customerName", "amount", "timestamp"]
+      "required": ["customerId", "customerName", "amount", "timestamp", "businessId"]
     },
-    "Member": {
-      "title": "Member",
-      "description": "Employee or team member with specific access roles.",
+    "CashTransaction": {
+      "title": "CashTransaction",
+      "description": "Manual cash in/out entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "type": { "type": "string", "enum": ["in", "out"] },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["USD", "SSP"] },
+        "notes": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "amount", "currency", "notes", "timestamp", "businessId"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Business profile and settings.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "operator", "viewer"] },
-        "addedAt": { "type": "string", "format": "date-time" }
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "email", "role", "addedAt"]
+      "required": ["name", "ownerId", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User specific settings and business association.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "businessId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "businessId"]
     }
   },
   "firestore": {
@@ -121,9 +153,17 @@
       "schema": "Payment",
       "description": "Collection of customer repayments."
     },
-    "/members/{memberId}": {
-      "schema": "Member",
-      "description": "Collection of team members and their roles."
+    "/cashTransactions/{transactionId}": {
+      "schema": "CashTransaction",
+      "description": "Collection of manual cash transactions."
+    },
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Collection of business profiles."
+    },
+    "/userProfiles/{uid}": {
+      "schema": "UserProfile",
+      "description": "Collection of user profiles."
     }
   }
 }
