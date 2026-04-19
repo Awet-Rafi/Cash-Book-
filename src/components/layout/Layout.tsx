@@ -34,6 +34,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const navItems = React.useMemo(() => {
     const items = [
       { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+      { name: 'Customer Ledger', path: '/ledger', icon: Book },
       { name: 'Cash Book', path: '/cash-book', icon: DollarSign },
       { name: 'Credit Book', path: '/credit-book', icon: CreditCard },
       { name: 'POS / Sales', path: '/pos', icon: ShoppingCart },
@@ -42,7 +43,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       { name: 'Order Book', path: '/order-book', icon: Truck },
       { name: 'Receipt Book', path: '/receipt-book', icon: Receipt },
       { name: 'Customers', path: '/customers', icon: UserIcon },
-      { name: 'Customer Ledger', path: '/ledger', icon: Book },
       { name: 'Reports', path: '/reports', icon: BarChart3 },
     ];
 
