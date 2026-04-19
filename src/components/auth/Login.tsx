@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 const Login = () => {
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [view, setView] = useState<'login' | 'signup' | 'forgot-password'>('login');
@@ -36,6 +38,7 @@ const Login = () => {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
+      navigate('/', { replace: true });
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-blocked') {
         setLoading(false);
@@ -103,6 +106,7 @@ const Login = () => {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
+      navigate('/', { replace: true });
     } catch (err: any) {
       console.error("Auth error:", err);
       let message = "Authentication failed. Please check your credentials.";
