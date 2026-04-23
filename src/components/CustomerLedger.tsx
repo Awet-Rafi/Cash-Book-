@@ -938,16 +938,21 @@ export default function CustomerLedger() {
         {customerCredits.map((customer, index) => (
           <motion.div 
             key={customer.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            whileHover={{ scale: 1.015, y: -2, zIndex: 10 }}
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.01, y: -2, zIndex: 10 }}
             transition={{ 
-              delay: index * 0.03,
-              scale: { type: "spring", stiffness: 800, damping: 15 },
-              y: { type: "spring", stiffness: 800, damping: 15 }
+              layout: { type: "spring", stiffness: 300, damping: 30 },
+              delay: Math.min(index * 0.01, 0.2), // Further reduced delay
+              duration: 0.2,
+              type: "spring",
+              stiffness: 260,
+              damping: 25
             }}
             className={cn(
-              "bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all duration-300 group relative",
+              "bg-white rounded-2xl border border-gray-100 shadow-sm relative group overflow-hidden",
+              "hover:border-indigo-100 hover:shadow-md",
               expandedCustomer === customer.id ? "ring-1 ring-indigo-500" : ""
             )}
           >
