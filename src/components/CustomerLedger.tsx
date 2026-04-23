@@ -533,7 +533,9 @@ export default function CustomerLedger() {
         }
         return acc + s.totalAmount;
       }, 0);
-      const totalRepayments = customerPayments.reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
+      const totalRepayments = customerPayments
+        .filter(p => p.status === 'transferred' || (!p.status && p.isConfirmed))
+        .reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
       
       const netOwed = totalCreditSales - totalRepayments;
 
@@ -1226,6 +1228,11 @@ export default function CustomerLedger() {
                             </p>
                             <p className="font-bold text-gray-900 text-[11px] truncate leading-tight">
                               {item.notes || (item.isPayment ? 'Repayment' : item.isExpense ? 'Expense' : 'Credit Sale')}
+                              {item.collection === 'payments' && item.status === 'pending' && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[7px] font-black uppercase tracking-widest border border-amber-100">
+                                  Pending Transfer
+                                </span>
+                              )}
                             </p>
                             {!item.isPayment && item.items && item.items.length > 0 && (
                               <div className="mt-1 flex flex-wrap gap-1">

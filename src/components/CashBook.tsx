@@ -110,6 +110,7 @@ export default function CashBook() {
       if (amountUSD > 0) {
         parts.push({
           id: `${s.id}_usd`,
+          originalId: s.id,
           timestamp: s.timestamp,
           customerName: s.customerName,
           amount: amountUSD,
@@ -130,6 +131,7 @@ export default function CashBook() {
       if (amountSSP > 0) {
         parts.push({
           id: `${s.id}_ssp`,
+          originalId: s.id,
           timestamp: s.timestamp,
           customerName: s.customerName,
           amount: amountSSP,
@@ -153,6 +155,7 @@ export default function CashBook() {
       if (p.amountUSD && p.amountUSD > 0) {
         parts.push({
           id: `${p.id}_usd`,
+          originalId: p.id,
           timestamp: p.timestamp,
           customerName: p.customerName,
           amount: p.amountUSD,
@@ -172,6 +175,7 @@ export default function CashBook() {
       if (p.amountSSP && p.amountSSP > 0) {
         parts.push({
           id: `${p.id}_ssp`,
+          originalId: p.id,
           timestamp: p.timestamp,
           customerName: p.customerName,
           amount: p.amountSSP,
@@ -191,6 +195,7 @@ export default function CashBook() {
         // Fallback for single currency payments
         parts.push({
           id: p.id,
+          originalId: p.id,
           timestamp: p.timestamp,
           customerName: p.customerName,
           amount: p.amount,
@@ -217,6 +222,7 @@ export default function CashBook() {
       if (amountUSD > 0) {
         parts.push({
           id: `${e.id}_usd`,
+          originalId: e.id,
           timestamp: e.timestamp,
           customerName: 'Expense',
           amount: amountUSD,
@@ -235,6 +241,7 @@ export default function CashBook() {
       if (amountSSP > 0) {
         parts.push({
           id: `${e.id}_ssp`,
+          originalId: e.id,
           timestamp: e.timestamp,
           customerName: 'Expense',
           amount: amountSSP,
@@ -256,6 +263,7 @@ export default function CashBook() {
       .filter(t => t.type === 'in')
       .map(t => ({
         id: t.id,
+        originalId: t.id,
         timestamp: t.timestamp,
         customerName: t.customerName || 'Manual Entry',
         amount: t.amount,
@@ -372,7 +380,7 @@ export default function CashBook() {
       const batch = writeBatch(db);
       summary.transactions.forEach((t: any) => {
         if (!t.isConfirmed || (t.collection === 'payments' && t.status === 'pending')) {
-          const ref = doc(db, t.collection, t.id);
+          const ref = doc(db, t.collection, t.originalId);
           const updateData: any = { isConfirmed: true };
           if (t.collection === 'payments' && t.status === 'pending') {
             updateData.status = 'transferred';

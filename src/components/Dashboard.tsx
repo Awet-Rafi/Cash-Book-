@@ -151,7 +151,9 @@ export default function Dashboard() {
       }
       return acc + s.totalAmount;
     }, 0);
-    const totalRepayments = payments.reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
+    const totalRepayments = payments
+      .filter(p => !p.status || p.status === 'transferred')
+      .reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
     const outstandingCredit = totalCreditSales - totalRepayments;
 
     const lowStockProducts = products.filter(p => p.stockQuantity <= 5);
