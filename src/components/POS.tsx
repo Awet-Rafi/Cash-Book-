@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, doc, serverTimestamp, increment, orderBy, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, serverTimestamp, increment, orderBy, writeBatch, getDoc, updateDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, SaleItem, Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle, X, FileText } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function POS() {
   const { isAdmin, businessId } = useAuth();
@@ -26,23 +27,20 @@ export default function POS() {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [discount, setDiscount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-  const [isCartExpanded, setIsCartExpanded] = useState(false);
-  const [isProductListExpanded, setIsProductListExpanded] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [originalCart, setOriginalCart] = useState<SaleItem[]>([]);
   const [isMixedPayment, setIsMixedPayment] = useState(false);
   const [mixedUSD, setMixedUSD] = useState<string>('');
   const [mixedSSP, setMixedSSP] = useState<string>('');
+  const [isCartOpenMobile, setIsCartOpenMobile] = useState(false);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   useEffect(() => {
     const checkDesktop = () => {
       const desktop = window.innerWidth >= 1024;
       setIsDesktop(desktop);
-      if (desktop) {
-        setIsProductListExpanded(true);
-        setIsCartExpanded(true);
-      }
     };
     
     checkDesktop();
@@ -52,6 +50,17 @@ export default function POS() {
 
   useEffect(() => {
     if (!businessId) return;
+
+    const qRecent = query(
+      collection(db, 'sales'),
+      where('businessId', '==', businessId),
+      orderBy('timestamp', 'desc'),
+      limit(10)
+    );
+
+    const unsubRecent = onSnapshot(qRecent, (snapshot) => {
+      setRecentSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     const qProducts = query(collection(db, 'products'), where('businessId', '==', businessId));
     const unsubProducts = onSnapshot(qProducts, (snapshot) => {
@@ -117,8 +126,28 @@ export default function POS() {
     return () => {
       unsubProducts();
       unsubCustomers();
+      unsubRecent();
     };
   }, [businessId]);
+
+  const todayStats = useMemo(() => {
+    if (!isAdmin) return null;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return recentSales.reduce((acc, sale) => {
+      const saleDate = sale.timestamp?.toDate() || new Date();
+      if (saleDate < today) return acc;
+
+      if (sale.currency === 'SSP') {
+        acc.ssp += sale.totalAmount;
+      } else {
+        acc.usd += sale.totalAmount;
+      }
+      return acc;
+    }, { usd: 0, ssp: 0 });
+  }, [recentSales, isAdmin]);
 
   const addToCart = (product: Product) => {
     if (product.stockQuantity <= 0) return;
@@ -257,26 +286,66 @@ export default function POS() {
       if (editingSaleId) {
         batch.update(saleRef, saleData);
         
-        // 2. Restore Stock for original items
+        // 2. Restore Stock for original items and log movement
         for (const item of originalCart) {
           const productRef = doc(db, 'products', item.productId);
           batch.update(productRef, {
             stockQuantity: increment(item.quantity)
+          });
+
+          const movementRef = doc(collection(db, 'stockMovements'));
+          batch.set(movementRef, {
+            businessId,
+            productId: item.productId,
+            productName: item.name,
+            type: 'edit_sale',
+            quantity: item.quantity,
+            timestamp: serverTimestamp(),
+            notes: `Restored stock from edited sale ${editingSaleId}`,
+            referenceId: editingSaleId
           });
         }
       } else {
         batch.set(saleRef, saleData);
       }
       
-      // 3. Update Inventory for new items
+      // 3. Update Inventory for new items and log movement
       for (const item of cart) {
         const productRef = doc(db, 'products', item.productId);
         batch.update(productRef, {
           stockQuantity: increment(-item.quantity)
         });
+
+        const movementRef = doc(collection(db, 'stockMovements'));
+        batch.set(movementRef, {
+          businessId,
+          productId: item.productId,
+          productName: item.name,
+          type: 'sale',
+          quantity: -item.quantity,
+          timestamp: serverTimestamp(),
+          notes: editingSaleId ? `Updated quantity in sale ${editingSaleId}` : `Sold in transaction ${saleRef.id}`,
+          referenceId: saleRef.id,
+          customerName: selectedCustomer ? selectedCustomer.name : (guestName || 'Guest'),
+          paymentMethod,
+          amount: item.priceAtSale * item.quantity,
+          currency: currency
+        });
       }
 
       await batch.commit();
+
+      // Update customer document's updatedAt to reflect activity if a customer was selected
+      if (selectedCustomer?.id) {
+        try {
+          await updateDoc(doc(db, 'customers', selectedCustomer.id), {
+            updatedAt: serverTimestamp()
+          });
+        } catch (updateError) {
+          console.error("Error updating customer updatedAt:", updateError);
+          // Don't fail the sale if only the customer update fails
+        }
+      }
 
       const customerId = selectedCustomer?.id;
       const isUpdate = !!editingSaleId;
@@ -309,465 +378,440 @@ export default function POS() {
   );
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-8">
+    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 relative overflow-hidden">
       {/* Product Selection */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="relative mb-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <div className={cn(
+        "flex-1 flex flex-col min-w-0 transition-all duration-300 h-full",
+        !isDesktop && isCartOpenMobile && "blur-sm pointer-events-none scale-[0.98]"
+      )}>
+        <div className="relative mb-2 shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
           <input 
             type="text" 
             autoComplete="off"
             placeholder="Search products..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm text-sm"
+            className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm text-[13px] dark:text-white dark:placeholder-gray-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
         <div className="flex-1 overflow-y-auto pr-1">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  <th className="px-2 lg:px-6 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="hidden sm:table-cell px-2 lg:px-6 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-2 lg:px-6 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Price</th>
-                  <th className="px-2 lg:px-6 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center">Stock</th>
-                  <th className="px-2 lg:px-6 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {(isProductListExpanded || isDesktop ? filteredProducts : filteredProducts.slice(0, 4)).map((product) => (
-                  <tr 
-                    key={product.id} 
-                    className={cn(
-                      "hover:bg-gray-50/50 transition-colors group animate-in fade-in slide-in-from-left-2 duration-200",
-                      product.stockQuantity <= 0 && "opacity-50 grayscale bg-gray-50/50"
-                    )}
-                  >
-                    <td className="px-2 lg:px-6 py-2 lg:py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="hidden sm:flex w-8 h-8 bg-gray-50 rounded-lg items-center justify-center group-hover:bg-indigo-50 transition-colors">
-                          <ShoppingCart className="w-4 h-4 text-gray-400 group-hover:text-indigo-400" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-gray-900 text-xs lg:text-sm truncate max-w-[80px] sm:max-w-none">{product.name}</p>
-                          <p className="sm:hidden text-[10px] text-gray-400 truncate">{product.category}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="hidden sm:table-cell px-2 lg:px-6 py-2 lg:py-3 text-xs text-gray-500">{product.category}</td>
-                    <td className="px-2 lg:px-6 py-2 lg:py-3 text-xs font-black text-indigo-600 text-right">
-                      {currency === 'USD' ? '$' : ''}
-                      {(product.price * rate).toLocaleString('en-US')}
-                      {currency === 'SSP' ? ' SSP' : ''}
-                    </td>
-                    <td className="px-2 lg:px-6 py-2 lg:py-3 text-center">
-                      <span className={cn(
-                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full",
-                        product.stockQuantity <= 5 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
-                      )}>
-                        {product.stockQuantity}
-                      </span>
-                    </td>
-                    <td className="px-2 lg:px-6 py-2 lg:py-3 text-right">
-                      <button
-                        disabled={product.stockQuantity <= 0}
-                        onClick={() => addToCart(product)}
-                        className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 transition-all shadow-sm"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden h-full">
+            <div className="overflow-x-auto h-full">
+              <table className="w-full text-left border-collapse min-w-[500px]">
+                <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
+                  <tr className="border-b border-gray-100 dark:border-gray-700">
+                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Product</th>
+                    <th className="hidden sm:table-cell px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Category</th>
+                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Price</th>
+                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-center">Stock</th>
+                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            
-            {filteredProducts.length > 4 && (
-              <div className="p-4 border-t border-gray-50 bg-gray-50/30 lg:hidden">
-                <button 
-                  onClick={() => setIsProductListExpanded(!isProductListExpanded)}
-                  className="w-full py-2.5 flex items-center justify-center gap-2 text-xs font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 rounded-xl transition-all border border-dashed border-indigo-200"
-                >
-                  {isProductListExpanded ? (
-                    <>Show Less Products <ChevronDown className="w-3 h-3 rotate-180" /></>
-                  ) : (
-                    <>Show {filteredProducts.length - 4} More Products <ChevronDown className="w-3 h-3" /></>
-                  )}
-                </button>
-              </div>
-            )}
-            {filteredProducts.length === 0 && (
-              <div className="text-center py-20">
-                <p className="text-gray-400 font-medium">No products found matching your search.</p>
-              </div>
-            )}
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {filteredProducts.map((product) => (
+                    <tr 
+                      key={product.id} 
+                      className={cn(
+                        "hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors group animate-in fade-in duration-200",
+                        product.stockQuantity <= 0 && "opacity-50 grayscale bg-gray-50/50 dark:bg-gray-900/50"
+                      )}
+                    >
+                      <td className="px-3 lg:px-4 py-1 lg:py-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="hidden sm:flex w-6 h-6 bg-gray-50 dark:bg-gray-700 rounded-lg items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/40 transition-colors">
+                            <ShoppingCart className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-indigo-400" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900 dark:text-white text-[11px] lg:text-xs truncate max-w-[120px] lg:max-w-[180px]">{product.name}</p>
+                            <p className="sm:hidden text-[8px] text-gray-400 truncate">{product.category}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden sm:table-cell px-3 lg:px-4 py-1 lg:py-1.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">{product.category}</td>
+                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-[11px] font-black text-indigo-600 dark:text-indigo-400 text-right font-mono">
+                        {currency === 'USD' ? '$' : ''}
+                        {(product.price * rate).toLocaleString('en-US', { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
+                        {currency === 'SSP' ? ' SSP' : ''}
+                      </td>
+                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-center">
+                        <span className={cn(
+                          "text-[8px] font-black px-1.5 py-0 rounded-full inline-block min-w-[20px]",
+                          product.stockQuantity <= 5 ? "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                        )}>
+                          {product.stockQuantity}
+                        </span>
+                      </td>
+                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-right">
+                        <button
+                          disabled={product.stockQuantity <= 0}
+                          onClick={() => addToCart(product)}
+                          className="p-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 transition-all shadow-sm active:scale-90"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {filteredProducts.length === 0 && (
+                <div className="text-center py-20">
+                  <p className="text-gray-400 font-medium text-sm">No products found matching your search.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Cart / Checkout */}
-      <div className="w-full lg:w-[380px] flex flex-col bg-white rounded-2xl lg:rounded-3xl border border-gray-100 shadow-xl overflow-hidden shrink-0">
-        <div className="p-4 lg:p-6 border-b border-gray-100 bg-gray-50/50">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-indigo-600" />
-              {editingSaleId ? 'Edit Order' : 'Current Order'}
-            </h3>
-            <div className="flex items-center gap-2">
-              {editingSaleId && (
-                <button 
-                  onClick={() => {
-                    setEditingSaleId(null);
-                    setCart([]);
-                    setOriginalCart([]);
-                    setSelectedCustomer(null);
-                    setGuestName('');
-                    setDiscount(0);
-                  }}
-                  className="px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-100 transition-colors"
-                >
-                  Cancel Edit
-                </button>
-              )}
-              <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">
-                {cart.length} Items
-              </span>
-            </div>
-          </div>
-          
-          {/* Customer Selection */}
-          <div className="relative mb-3">
-            <button 
-              onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
-              className="w-full flex items-center justify-between pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-left"
-            >
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <span className={cn(selectedCustomer ? "text-gray-900 font-medium" : "text-gray-400")}>
-                {selectedCustomer ? selectedCustomer.name : 'Select Customer'}
-              </span>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
-            </button>
-            
-            {showCustomerDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
-                <button 
-                  onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-50 font-medium text-gray-500"
-                >
-                  Guest Customer
-                </button>
-                {customers.map(customer => (
-                  <button 
-                    key={customer.id}
-                    onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 border-b border-gray-50"
-                  >
-                    {customer.name}
-                  </button>
-                ))}
-                {customers.length === 0 && (
-                  <div className="p-4 text-center text-xs text-gray-400">
-                    No customers registered.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {!selectedCustomer && (
-            <div className="relative mb-3">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input 
-                type="text" 
-                autoComplete="off"
-                placeholder="Guest Name (Optional)"
-                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <button
-              onClick={() => setPaymentMethod('cash')}
-              className={cn(
-                "py-2 rounded-xl text-xs font-bold transition-all border",
-                paymentMethod === 'cash' 
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" 
-                  : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-              )}
-            >
-              Cash Payment
-            </button>
-            <button
-              onClick={() => {
-                setPaymentMethod('credit');
-                setCurrency('USD');
-                setDiscount(0); // Reset discount to prevent currency mismatch when switching from SSP
-              }}
-              className={cn(
-                "py-2 rounded-xl text-xs font-bold transition-all border",
-                paymentMethod === 'credit' 
-                  ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100" 
-                  : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-              )}
-            >
-              Credit Sale
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }}
-              className={cn(
-                "py-2 rounded-xl text-xs font-bold transition-all border",
-                (currency === 'USD' && !isMixedPayment)
-                  ? "bg-green-600 border-green-600 text-white shadow-lg shadow-green-100" 
-                  : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
-              )}
-            >
-              USD
-            </button>
-            <button
-              onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }}
-              disabled={paymentMethod === 'credit'}
-              className={cn(
-                "py-2 rounded-xl text-xs font-bold transition-all border",
-                (currency === 'SSP' && !isMixedPayment)
-                  ? "bg-green-600 border-green-600 text-white shadow-lg shadow-green-100" 
-                  : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50",
-                paymentMethod === 'credit' && "opacity-50 cursor-not-allowed grayscale"
-              )}
-            >
-              SSP
-            </button>
-          </div>
-
-          {paymentMethod === 'cash' && (
-            <div className="mt-2">
-              <button
-                onClick={() => setIsMixedPayment(!isMixedPayment)}
-                className={cn(
-                  "w-full py-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-2",
-                  isMixedPayment
-                    ? "bg-indigo-600 border-indigo-600 text-white"
-                    : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100"
-                )}
-              >
-                <div className={cn("w-3 h-3 rounded-full border-2", isMixedPayment ? "border-white bg-white" : "border-gray-300")} />
-                Mixed Currency (USD + SSP)
-              </button>
-            </div>
-          )}
-
-          {isMixedPayment && (
-            <div className="mt-3 space-y-3 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 animate-in fade-in zoom-in duration-200">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">USD Part</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={mixedUSD}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setMixedUSD(val);
-                        // Auto-calculate SSP part
-                        const usdVal = parseFloat(val) || 0;
-                        const totalInUSD = totalAmount / (currency === 'SSP' ? exchangeRate : 1);
-                        const remainingUSD = totalInUSD - usdVal;
-                        setMixedSSP((remainingUSD * exchangeRate).toFixed(0));
-                      }}
-                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">$</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">SSP Part</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={mixedSSP}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setMixedSSP(val);
-                        // Auto-calculate USD part
-                        const sspVal = parseFloat(val) || 0;
-                        const totalInSSP = totalAmount * (currency === 'USD' ? exchangeRate : 1);
-                        const remainingSSP = totalInSSP - sspVal;
-                        setMixedUSD((remainingSSP / exchangeRate).toFixed(2));
-                      }}
-                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-bold"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(currency === 'SSP' || isMixedPayment) && (
-            <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 block">Exchange Rate (1 USD = ? SSP)</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={exchangeRate}
-                  onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm font-bold focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-                  placeholder="Enter rate..."
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-400">SSP</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 min-h-[150px]">
-          {cart.length > 0 ? (
-            <div className="space-y-4">
-              {(isCartExpanded || isDesktop ? cart : cart.slice(0, 4)).map((item) => (
-                <div key={item.productId} className="flex items-center gap-3 lg:gap-4 animate-in fade-in slide-in-from-right-2 duration-200">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-900 truncate">{item.name}</p>
-                    <p className="text-xs text-indigo-600 font-medium">
-                      {currency === 'USD' ? '$' : ''}
-                      {(item.priceAtSale * rate).toLocaleString('en-US')}
-                      {currency === 'SSP' ? ' SSP' : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 lg:gap-2 bg-gray-100 rounded-lg p-1">
-                    <button 
-                      onClick={() => updateQuantity(item.productId, -1)}
-                      className="p-1 hover:bg-white rounded transition-colors"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <input 
-                      type="number"
-                      min="1"
-                      className="text-xs font-bold w-8 text-center bg-transparent border-none focus:ring-0 p-0"
-                      value={item.quantity}
-                      onChange={(e) => setQuantity(item.productId, e.target.value)}
-                    />
-                    <button 
-                      onClick={() => updateQuantity(item.productId, 1)}
-                      className="p-1 hover:bg-white rounded transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <button 
-                    onClick={() => removeFromCart(item.productId)}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-              
-              {cart.length > 4 && (
-                <button 
-                  onClick={() => setIsCartExpanded(!isCartExpanded)}
-                  className="w-full py-2 flex items-center justify-center gap-2 text-xs font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 rounded-xl transition-all border border-dashed border-indigo-200 lg:hidden"
-                >
-                  {isCartExpanded ? (
-                    <>Show Less <ChevronDown className="w-3 h-3 rotate-180" /></>
-                  ) : (
-                    <>Show {cart.length - 4} More Items <ChevronDown className="w-3 h-3" /></>
-                  )}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center py-8">
-              <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                <ShoppingCart className="w-6 h-6 text-gray-200" />
-              </div>
-              <p className="text-gray-400 font-medium text-sm">Your cart is empty</p>
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 lg:p-6 bg-gray-50 border-t border-gray-100 space-y-3 lg:space-y-4">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 text-red-600 text-xs font-bold animate-in fade-in slide-in-from-top-1">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              {error}
-            </div>
-          )}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>Subtotal</span>
-              <span>
-                {currency === 'USD' ? '$' : ''}
-                {subtotal.toLocaleString('en-US')}
-                {currency === 'SSP' ? ' SSP' : ''}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm text-gray-500">
-              <span>Tax (0%)</span>
-              <span>$0.00</span>
-            </div>
-            <div className="flex justify-between items-center text-sm text-red-500">
-              <span>Discount</span>
-              <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-2 py-1">
-                <span className="text-[10px] font-bold text-gray-400">{currency === 'USD' ? '$' : 'SSP'}</span>
-                <input 
-                  type="number" 
-                  min="0"
-                  step="0.01"
-                  className="w-20 bg-transparent border-none focus:ring-0 p-0 text-right font-bold"
-                  value={discount || ''}
-                  onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                />
-              </div>
-            </div>
-            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-              <span className="text-lg font-black text-gray-900">Total</span>
-              <div className="text-right">
-                <span className="text-2xl font-black text-indigo-600 block">
-                  {isMixedPayment ? (
-                    `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
-                  ) : (
-                    `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString('en-US')} ${currency === 'SSP' ? 'SSP' : ''}`
-                  )}
-                </span>
-                {isMixedPayment && (
-                  <div className="flex flex-col items-end text-[10px] font-bold text-gray-400 mt-0.5 uppercase tracking-tighter leading-none">
-                    <span>${(parseFloat(mixedUSD) || 0).toLocaleString('en-US')} + {(parseFloat(mixedSSP) || 0).toLocaleString('en-US')} SSP</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <button 
-            disabled={cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer)}
-            onClick={handleCheckout}
+      {/* Cart / Checkout Sidebar */}
+      <AnimatePresence>
+        {(isDesktop || isCartOpenMobile) && (
+          <motion.div 
+            initial={isDesktop ? { x: 20, opacity: 0 } : { y: '100%' }}
+            animate={isDesktop ? { x: 0, opacity: 1 } : { y: 0 }}
+            exit={isDesktop ? { x: 20, opacity: 0 } : { y: '100%' }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className={cn(
-              "w-full py-4 text-white rounded-2xl font-black text-lg shadow-xl transition-all flex items-center justify-center gap-3",
-              (cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer))
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-indigo-600 shadow-indigo-100 hover:bg-indigo-700"
+              "flex flex-col bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl overflow-hidden shrink-0",
+              isDesktop 
+                ? "w-[400px] h-full rounded-3xl" 
+                : "fixed inset-x-0 bottom-0 top-[10%] z-50 rounded-t-[32px] border-t-2 border-indigo-500/20"
             )}
           >
-            {isProcessing ? (
-              <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <CheckCircle2 className="w-6 h-6" />
-                {paymentMethod === 'credit' && !selectedCustomer ? 'Select Customer' : (editingSaleId ? 'Update Sale' : 'Complete Sale')}
-              </>
+            {/* Mobile Grab Handle */}
+            {!isDesktop && (
+              <div className="w-full flex justify-center py-3">
+                <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full" />
+              </div>
             )}
-          </button>
+
+            <div className="p-2 lg:px-4 lg:py-1.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg">
+                  <ShoppingCart className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <h3 className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-tight font-mono">
+                  {editingSaleId ? 'Edit Order' : 'Current Order'}
+                </h3>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button 
+                  onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                  className={cn(
+                    "px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all",
+                    isHistoryOpen 
+                      ? "bg-indigo-600 text-white shadow-sm" 
+                      : "bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  )}
+                >
+                  {isHistoryOpen ? 'Current Cart' : 'History'}
+                </button>
+                {editingSaleId && (
+                  <button 
+                    onClick={() => {
+                      setEditingSaleId(null);
+                      setCart([]);
+                      setOriginalCart([]);
+                      setSelectedCustomer(null);
+                      setGuestName('');
+                      setDiscount(0);
+                    }}
+                    className="px-2 py-0.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-[8px] font-black uppercase tracking-wider hover:bg-red-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {!isHistoryOpen && (
+                  <span className="px-1.5 py-0 bg-indigo-600 text-white rounded-full text-[9px] font-black">
+                    {cart.length}
+                  </span>
+                )}
+                {!isDesktop && (
+                  <button 
+                    onClick={() => setIsCartOpenMobile(false)}
+                    className="p-1 bg-gray-200 dark:bg-gray-700 rounded-full text-gray-500 dark:text-gray-300"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            <div className="px-2 lg:px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 space-y-1">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
+                    className="w-full flex items-center justify-between pl-7 pr-1.5 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-lg text-[9px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-left dark:text-white"
+                  >
+                    <User className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
+                    <span className={cn("truncate", selectedCustomer ? "text-gray-900 dark:text-white" : "text-gray-400")}>
+                      {selectedCustomer ? selectedCustomer.name : 'Guest'}
+                    </span>
+                    <ChevronDown className={cn("w-2 h-2 text-gray-400 transition-transform", showCustomerDropdown && "rotate-180")} />
+                  </button>
+                  <AnimatePresence>
+                    {showCustomerDropdown && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowCustomerDropdown(false)} />
+                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-32 overflow-y-auto">
+                          <button onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }} className="w-full px-3 py-1 text-left text-[9px] hover:bg-gray-50 border-b font-black text-gray-400 uppercase">Guest</button>
+                          {customers.map(customer => (
+                            <button key={customer.id} onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); }} className="w-full px-3 py-1 text-left text-[10px] font-bold hover:bg-indigo-50 border-b">{customer.name}</button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+                {!selectedCustomer && (
+                  <div className="relative">
+                    <User className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
+                    <input type="text" placeholder="Guest" className="w-full pl-7 pr-1.5 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-lg text-[9px] font-bold focus:ring-1 dark:text-white" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex border dark:border-gray-700 rounded overflow-hidden">
+                  <button onClick={() => setPaymentMethod('cash')} className={cn("flex-1 py-0.5 text-[8px] font-black", paymentMethod === 'cash' ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>Cash</button>
+                  <button onClick={() => { setPaymentMethod('credit'); setCurrency('USD'); }} className={cn("flex-1 py-0.5 text-[8px] font-black", paymentMethod === 'credit' ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>Credit</button>
+                </div>
+                <div className="flex border dark:border-gray-700 rounded overflow-hidden">
+                  <button onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }} className={cn("flex-1 py-0.5 text-[8px] font-black", (currency === 'USD' && !isMixedPayment) ? "bg-green-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>USD</button>
+                  <button onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }} disabled={paymentMethod === 'credit'} className={cn("flex-1 py-0.5 text-[8px] font-black", (currency === 'SSP' && !isMixedPayment) ? "bg-green-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400", paymentMethod === 'credit' && "opacity-50")}>SSP</button>
+                </div>
+              </div>
+
+              {paymentMethod === 'cash' && (
+                <button
+                  onClick={() => setIsMixedPayment(!isMixedPayment)}
+                  className={cn(
+                    "w-full py-0.5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all border flex items-center justify-center gap-1",
+                    isMixedPayment
+                      ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
+                      : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-400"
+                  )}
+                >
+                  Mixed Payment
+                </button>
+              )}
+
+              {isMixedPayment && (
+                <div className="space-y-1.5 p-1.5 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/20">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="space-y-0.5">
+                      <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block">USD Part</label>
+                      <input
+                        type="number"
+                        value={mixedUSD}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMixedUSD(val);
+                          const usdVal = parseFloat(val) || 0;
+                          const totalInUSD = totalAmount / (currency === 'SSP' ? exchangeRate : 1);
+                          const remainingUSD = totalInUSD - usdVal;
+                          setMixedSSP((remainingUSD * exchangeRate).toFixed(0));
+                        }}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block">SSP Part</label>
+                      <input
+                        type="number"
+                        value={mixedSSP}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMixedSSP(val);
+                          const sspVal = parseFloat(val) || 0;
+                          const totalInSSP = totalAmount * (currency === 'USD' ? exchangeRate : 1);
+                          const remainingSSP = totalInSSP - sspVal;
+                          setMixedUSD((remainingSSP / exchangeRate).toFixed(2));
+                        }}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(currency === 'SSP' || isMixedPayment) && (
+                <div className="relative">
+                  <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-0.5 block">Exchange Rate</label>
+                  <input
+                    type="number"
+                    value={exchangeRate}
+                    onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-1 text-[11px] font-black focus:ring-1 focus:ring-green-500 transition-all dark:text-white"
+                  />
+                  <span className="absolute right-3 top-[16px] text-[7px] font-black text-gray-400">SSP</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-800">
+              <div className="flex-1 overflow-y-auto p-2 lg:px-4 py-1.5 space-y-1 custom-scrollbar">
+                {isHistoryOpen ? (
+                  <div className="space-y-1">
+                    <h4 className="text-[8px] font-black text-gray-500 uppercase tracking-widest px-1 mb-2">Recent Sales History</h4>
+                    {recentSales.map((sale) => (
+                      <div key={sale.id} className="p-1.5 bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 rounded flex items-center justify-between gap-1">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] font-bold truncate dark:text-white">{sale.customerName}</p>
+                          <p className="text-[7px] text-gray-400 font-mono tracking-tighter capitalize">{sale.paymentMethod} • {new Date(sale.timestamp?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                            {sale.currency === 'USD' ? '$' : ''}{sale.totalAmount.toLocaleString()}
+                          </p>
+                          <button onClick={() => { setLastSale(sale); setShowReceipt(true); }} className="p-1 text-gray-300 hover:text-indigo-500 transition-colors"><Receipt className="w-3 h-3" /></button>
+                        </div>
+                      </div>
+                    ))}
+                    {recentSales.length === 0 && <p className="text-[8px] text-gray-400 text-center py-8 uppercase font-black tracking-widest">No Recent Sales</p>}
+                  </div>
+                ) : cart.length > 0 ? (
+                  cart.map((item) => (
+                    <div key={item.productId} className="flex items-center gap-1.5 bg-gray-50/50 dark:bg-gray-900/30 p-1 rounded-lg border border-gray-100/50 dark:border-gray-800/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold dark:text-white truncate">{item.name}</p>
+                        <p className="text-[8px] text-gray-400 font-mono">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
+                      </div>
+                      <div className="flex items-center gap-0.5 bg-white dark:bg-gray-700 rounded p-0.5 border border-gray-100 dark:border-gray-600">
+                        <button onClick={() => updateQuantity(item.productId, -1)} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Minus className="w-1.5 h-1.5" /></button>
+                        <span className="text-[9px] font-black w-3.5 text-center dark:text-white">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.productId, 1)} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Plus className="w-1.5 h-1.5" /></button>
+                      </div>
+                      <button onClick={() => removeFromCart(item.productId)} className="text-gray-300 hover:text-red-500 p-0.5 transition-colors"><Trash2 className="w-2.5 h-2.5" /></button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center opacity-20"><ShoppingCart className="w-4 h-4 mb-1" /><p className="text-[7px] font-bold uppercase tracking-widest text-center">Empty Basket</p></div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-2 lg:p-3 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 space-y-1.5 shrink-0">
+              {isAdmin && todayStats && (
+                <div className="grid grid-cols-2 gap-1 bg-white dark:bg-gray-800 p-1 rounded border border-gray-100 dark:border-gray-700 shadow-inner">
+                  <div className="text-center border-r border-gray-100 dark:border-gray-700">
+                    <p className="text-[6px] font-black text-gray-400 uppercase tracking-tighter">Total USD</p>
+                    <p className="text-[9px] font-black text-green-600 dark:text-green-400 font-mono">${todayStats.usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[6px] font-black text-gray-400 uppercase tracking-tighter">Total SSP</p>
+                    <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{todayStats.ssp.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="p-1.5 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-lg flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[9px] font-bold animate-in fade-in">
+                  <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+                  {error}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-[9px] text-gray-500 dark:text-gray-400">
+                  <span>Subtotal</span>
+                  <span className="dark:text-gray-200 font-mono font-bold">
+                    {currency === 'USD' ? '$' : ''}
+                    {subtotal.toLocaleString('en-US')}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[9px] text-red-500">
+                  <span>Discount</span>
+                  <div className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 py-0">
+                    <span className="text-[7px] font-bold text-gray-400">{currency === 'USD' ? '$' : 'SSP'}</span>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      className="w-10 bg-transparent border-none focus:ring-0 p-0 text-right font-black text-[9px] dark:text-white" 
+                      value={discount || ''} 
+                      onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))} 
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-gray-200 dark:border-gray-700">
+                  <span className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-tighter">Total</span>
+                  <div className="text-right">
+                    <span className="text-sm lg:text-base font-black text-indigo-600 dark:text-indigo-400 block font-mono">
+                      {isMixedPayment ? (
+                        `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
+                      ) : (
+                        `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString('en-US')}${currency === 'SSP' ? ' SSP' : ''}`
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                disabled={cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer)}
+                onClick={handleCheckout}
+                className={cn(
+                  "w-full py-1.5 text-white rounded-lg font-black text-[11px] shadow-lg transition-all flex items-center justify-center gap-1.5",
+                  (cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer))
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-indigo-600 shadow-indigo-100 hover:bg-indigo-700 active:scale-[0.98]"
+                )}
+              >
+                {isProcessing ? (
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {paymentMethod === 'credit' && !selectedCustomer ? 'Select Customer' : (editingSaleId ? 'Update' : 'Check Out')}
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+  {/* Mobile Floating Bar */}
+  {!isDesktop && !isCartOpenMobile && cart.length > 0 && (
+    <motion.button
+      initial={{ y: 100, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 100, opacity: 0 }}
+      onClick={() => setIsCartOpenMobile(true)}
+      className="fixed bottom-6 left-4 right-4 z-40 bg-indigo-600 text-white rounded-2xl p-4 shadow-2xl shadow-indigo-200 dark:shadow-none flex items-center justify-between group active:scale-95 transition-transform"
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <ShoppingCart className="w-6 h-6" />
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-indigo-600 animate-pulse">
+            {cart.length}
+          </span>
+        </div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Review Order</p>
+          <p className="font-black text-sm">
+            {cart.length === 1 ? '1 Item' : `${cart.length} Items`} Selected
+          </p>
         </div>
       </div>
+      <div className="text-right">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Total Amount</p>
+        <p className="text-lg font-black">
+          {isMixedPayment ? (
+            `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
+          ) : (
+            `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString('en-US')} ${currency === 'SSP' ? 'SSP' : ''}`
+          )}
+        </p>
+      </div>
+    </motion.button>
+  )}
 
-      {/* Receipt Modal */}
+  {/* Receipt Modal */}
       {showReceipt && lastSale && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in duration-200">
@@ -844,7 +888,17 @@ export default function POS() {
                   </div>
               </div>
             </div>
-            <div className="p-6 bg-gray-50">
+            <div className="p-6 bg-gray-50 flex flex-col gap-2">
+              <button 
+                onClick={() => {
+                  setShowReceipt(false);
+                  navigate('/invoices', { state: { selectedSaleId: lastSale.id } });
+                }}
+                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FileText className="w-5 h-5" />
+                View & Send Invoice
+              </button>
               <button 
                 onClick={() => {
                   setShowReceipt(false);
@@ -852,7 +906,7 @@ export default function POS() {
                 }}
                 className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition-colors"
               >
-                Close & Return to Customer List
+                Close & Return Dashboard
               </button>
             </div>
           </div>

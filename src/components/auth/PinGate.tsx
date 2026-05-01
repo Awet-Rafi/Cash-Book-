@@ -163,14 +163,14 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[60vh] p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-        <div className="bg-indigo-600 p-8 text-white text-center">
-          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-white" />
+    <div className="flex items-center justify-center min-h-[60vh] p-4 transition-colors duration-300">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-indigo-600 dark:bg-indigo-900 p-8 text-white text-center">
+          <div className="w-16 h-16 bg-white/20 dark:bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-white dark:text-indigo-400" />
           </div>
           <h2 className="text-2xl font-black uppercase tracking-tighter italic">Security Required</h2>
-          <p className="text-indigo-100 text-sm font-medium mt-2">
+          <p className="text-indigo-100 dark:text-indigo-200 text-sm font-medium mt-2">
             {view === 'enter' ? 'Please enter your security PIN to access this section.' : 
              view === 'setup' ? 'Set up a security PIN for your business.' :
              'Reset your security PIN.'}
@@ -179,14 +179,14 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
 
         <div className="p-8">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-xs font-bold">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400 text-xs font-bold">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <p>{error}</p>
             </div>
           )}
 
           {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 text-green-600 text-xs font-bold">
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-900/50 rounded-2xl flex items-center gap-3 text-green-600 dark:text-green-400 text-xs font-bold">
               <ShieldCheck className="w-4 h-4 shrink-0" />
               <p>{success}</p>
             </div>
@@ -195,7 +195,7 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
           {view === 'enter' ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2 text-center">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Enter 4-6 Digit PIN</label>
+                <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Enter 4-6 Digit PIN</label>
                 <input 
                   type="password"
                   required
@@ -203,7 +203,7 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
                   autoComplete="off"
                   maxLength={6}
                   placeholder="••••"
-                  className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-black text-2xl text-center tracking-[1em]"
+                  className="w-full px-4 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-black text-2xl text-center tracking-[1em] dark:text-white dark:placeholder-gray-600"
                   value={pin}
                   onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
                 />
@@ -211,7 +211,7 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
 
               <button 
                 type="submit"
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100"
+                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 dark:shadow-none"
               >
                 Unlock Section
               </button>
@@ -219,39 +219,39 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
               <button 
                 type="button"
                 onClick={() => setView('reset')}
-                className="w-full text-center text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-indigo-600 transition-colors"
+                className="w-full text-center text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
               >
                 Forgot Security PIN?
               </button>
             </form>
           ) : view === 'setup' ? (
             <form onSubmit={handleSetupPin} className="space-y-6">
-              <p className="text-xs text-gray-500 leading-relaxed text-center mb-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed text-center mb-4">
                 You haven't set a security PIN yet. Please set one now to protect your Inventory and Reports.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Set PIN</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Set PIN</label>
                   <input 
                     type="password"
                     required
                     autoComplete="off"
                     maxLength={6}
                     placeholder="••••"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                     value={newPin}
                     onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Confirm</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Confirm</label>
                   <input 
                     type="password"
                     required
                     autoComplete="off"
                     maxLength={6}
                     placeholder="••••"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                     value={confirmNewPin}
                     onChange={e => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
                   />
@@ -277,7 +277,7 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
             <div className="space-y-6">
               {resetStep === 'request' ? (
                 <div className="space-y-6">
-                  <p className="text-xs text-gray-500 leading-relaxed text-center">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed text-center">
                     To reset your PIN, we need to verify your identity. We will send a security link to <strong>{user?.email}</strong>.
                   </p>
                   <button 
@@ -299,27 +299,27 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
                 <form onSubmit={handlePinReset} className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">New PIN</label>
+                      <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">New PIN</label>
                       <input 
                         type="password"
                         required
                         autoComplete="off"
                         maxLength={6}
                         placeholder="••••"
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                         value={newPin}
                         onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Confirm</label>
+                      <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Confirm</label>
                       <input 
                         type="password"
                         required
                         autoComplete="off"
                         maxLength={6}
                         placeholder="••••"
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                         value={confirmNewPin}
                         onChange={e => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
                       />
@@ -351,7 +351,7 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
                   setError(null);
                   setSuccess(null);
                 }}
-                className="w-full text-center text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-indigo-600 transition-colors"
+                className="w-full text-center text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
               >
                 Back to Login
               </button>

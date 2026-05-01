@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, updateDoc, doc, Timestamp, addDoc, serverTimestamp, deleteDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Sale, Customer, Payment, Expense, CashTransaction } from '../types';
+import { Sale, Customer, Payment, Expense, CashTransaction, Currency } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { 
   Search, 
@@ -76,7 +76,9 @@ export default function CustomerLedger() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [paymentAttachment, setPaymentAttachment] = useState<string | null>(null);
   const [paymentAttachmentType, setPaymentAttachmentType] = useState<'image' | 'pdf' | null>(null);
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
   // Helper to format input as user types
@@ -104,11 +106,15 @@ export default function CustomerLedger() {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingBalance, setEditingBalance] = useState('');
+  const [editingCurrency, setEditingCurrency] = useState<Currency>('USD');
   const [isRenaming, setIsRenaming] = useState(false);
   
   // Add Customer State
   const [isAddingInline, setIsAddingInline] = useState(false);
   const [newInlineName, setNewInlineName] = useState('');
+  const [newInlineBalance, setNewInlineBalance] = useState('');
+  const [newInlineCurrency, setNewInlineCurrency] = useState<Currency>('USD');
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false);
 
   // Preview State
@@ -129,7 +135,8 @@ export default function CustomerLedger() {
 
   const [activeTransactionMenu, setActiveTransactionMenu] = useState<string | null>(null);
   const [activeCustomerTransactionMenu, setActiveCustomerTransactionMenu] = useState<string | null>(null);
-  const [deleteTransactionInfo, setDeleteTransactionInfo] = useState<{ id: string, collection: string, type: string } | null>(null);
+  const [deleteTransactionInfo, setDeleteTransactionInfo] = useState<{ id: string, collection: string, type: string, customerId?: string } | null>(null);
+  const [deleteCustomerInfo, setDeleteCustomerInfo] = useState<{ id: string, name: string } | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -172,7 +179,7 @@ export default function CustomerLedger() {
       where('paymentMethod', '==', 'credit'),
       where('status', '==', 'pending'),
       orderBy('timestamp', 'desc'),
-      limit(200)
+      limit(5000)
     ), (snapshot) => {
       setSales(snapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -187,7 +194,8 @@ export default function CustomerLedger() {
       setCustomers(snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data(),
-        createdAt: safeTimestamp(doc.data().createdAt)
+        createdAt: safeTimestamp(doc.data().createdAt),
+        updatedAt: safeTimestamp(doc.data().updatedAt)
       } as Customer)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'customers');
@@ -274,11 +282,15 @@ export default function CustomerLedger() {
         name: newInlineName.trim(),
         phone: '',
         email: '',
+        initialBalance: newInlineBalance ? parseFloat(newInlineBalance) : 0,
+        initialBalanceCurrency: newInlineCurrency,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         memberIds: []
       });
       setIsAddingInline(false);
       setNewInlineName('');
+      setNewInlineBalance('');
     } catch (error) {
       console.error('Error adding customer inline:', error);
     } finally {
@@ -286,11 +298,16 @@ export default function CustomerLedger() {
     }
   };
 
-  const handleMarkAsPaid = async (saleId: string) => {
+  const handleMarkAsPaid = async (saleId: string, customerId?: string) => {
     if (window.confirm('Mark this specific invoice as fully paid?')) {
       await updateDoc(doc(db, 'sales', saleId), {
         status: 'paid'
       });
+      if (customerId) {
+        await updateDoc(doc(db, 'customers', customerId), {
+          updatedAt: serverTimestamp()
+        });
+      }
       setExpandedCustomer(null); // Return to customer list
     }
   };
@@ -300,11 +317,16 @@ export default function CustomerLedger() {
     if (!selectedCustomerForPayment || (!paymentAmountUSD && !paymentAmountSSP) || isSubmittingPayment || !businessId) return;
     
     setIsSubmittingPayment(true);
+    setPaymentError(null);
     try {
       const usd = getRawNumber(paymentAmountUSD);
       const ssp = getRawNumber(paymentAmountSSP);
       const rate = getRawNumber(paymentExchangeRate) || 1000;
       const totalUSD = usd + (ssp / rate);
+
+      if (isNaN(totalUSD)) {
+        throw new Error("Invalid amount values. Please check your currency inputs.");
+      }
 
       const paymentData: any = {
         businessId,
@@ -316,35 +338,52 @@ export default function CustomerLedger() {
         amountUSD: usd,
         amountSSP: ssp,
         exchangeRate: rate,
-        notes: paymentNotes,
-        attachmentUrl: paymentAttachment,
-        attachmentType: paymentAttachmentType,
-        status: 'pending'
+        notes: paymentNotes || '',
+        attachmentUrl: paymentAttachment || null,
+        attachmentType: paymentAttachmentType || null,
+        timestamp: paymentDate ? new Date(paymentDate).getTime() : new Date().getTime(),
+        status: 'pending',
+        isConfirmed: false
       };
+
+      console.log("Attempting to record payment:", paymentData);
 
       if (editingPaymentId) {
         paymentData.updatedAt = serverTimestamp();
         await updateDoc(doc(db, 'payments', editingPaymentId), paymentData);
       } else {
-        paymentData.timestamp = serverTimestamp();
         // Record as single document even if both currencies are used
         await addDoc(collection(db, 'payments'), paymentData);
       }
+      
+      // Update customer document's updatedAt to reflect activity
+      await updateDoc(doc(db, 'customers', selectedCustomerForPayment.id), {
+        updatedAt: serverTimestamp()
+      });
       
       setIsPaymentModalOpen(false);
       setPaymentAmountUSD('');
       setPaymentAmountSSP('');
       setPaymentNotes('');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
       setPaymentAttachment(null);
       setPaymentAttachmentType(null);
       setEditingPaymentId(null);
-      setExpandedCustomer(null); // Return to customer list
+      // Removed setExpandedCustomer(null) to stay on the same page
     } catch (error) {
       console.error("Error recording payment:", error);
+      setPaymentError(error instanceof Error ? error.message : "An unknown error occurred");
+      handleFirestoreError(error, OperationType.WRITE, 'payments');
     } finally {
       setIsSubmittingPayment(false);
     }
   };
+
+  useEffect(() => {
+    if (!isPaymentModalOpen) {
+      setPaymentError(null);
+    }
+  }, [isPaymentModalOpen]);
 
   const handleEditTransaction = (item: any, customer: any) => {
     if (item.collection === 'payments') {
@@ -353,6 +392,7 @@ export default function CustomerLedger() {
       setPaymentAmountSSP(item.amountSSP?.toString() || (item.currency === 'SSP' ? item.amount.toString() : ''));
       setPaymentExchangeRate(item.exchangeRate?.toString() || '1000');
       setPaymentNotes(item.notes || '');
+      setPaymentDate(item.timestamp ? new Date(item.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
       setPaymentAttachment(item.attachmentUrl || null);
       setPaymentAttachmentType(item.attachmentType || null);
       setEditingPaymentId(item.id);
@@ -387,6 +427,7 @@ export default function CustomerLedger() {
         setPaymentAmountSSP(p.amountSSP?.toString() || (p.currency === 'SSP' ? p.amount.toString() : ''));
         setPaymentExchangeRate(p.exchangeRate?.toString() || '1000');
         setPaymentNotes(p.notes || '');
+        setPaymentDate(p.timestamp ? new Date(p.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
         setPaymentAttachment(p.attachmentUrl || null);
         setPaymentAttachmentType(p.attachmentType || null);
         setEditingPaymentId(p.id);
@@ -500,7 +541,7 @@ export default function CustomerLedger() {
 
   // Group sales and payments by customer
   const customerCredits = useMemo(() => {
-    return filteredCustomers.map(customer => {
+    return customers.map(customer => {
       const isCashSalesCustomer = customer.name === 'Cash Sales';
       
       const customerSales = sales.filter(s => {
@@ -508,7 +549,7 @@ export default function CustomerLedger() {
         const isWithin24Hours = new Date().getTime() - new Date(s.timestamp).getTime() <= 24 * 60 * 60 * 1000;
         
         if (isCashSalesCustomer) {
-          if (!isWithin24Hours) return false;
+          if (!isWithin24Hours && s.status !== 'pending') return false;
           if (s.paymentMethod === 'cash') return true;
           if (isDirectSale) return true;
           const isGuestSale = s.customerName === 'Guest' || !s.customerId;
@@ -519,25 +560,41 @@ export default function CustomerLedger() {
       });
 
       const customerPayments = payments.filter(p => {
-        const isWithin24Hours = new Date().getTime() - new Date(p.timestamp).getTime() <= 24 * 60 * 60 * 1000;
+        const isDirectPayment = p.customerId === customer.id;
         if (isCashSalesCustomer) {
-          return p.customerId === customer.id && isWithin24Hours;
+          const isUnmappedPayment = !p.customerId;
+          return isDirectPayment || isUnmappedPayment;
         }
-        return p.customerId === customer.id;
+        return isDirectPayment;
       });
       
-      const totalCreditSales = customerSales.filter(s => s.status === 'pending').reduce((acc, s) => {
-        if (s.currency === 'SSP') {
-          const rate = s.exchangeRate || 1000;
-          return acc + (s.totalAmount / rate);
-        }
-        return acc + s.totalAmount;
-      }, 0);
+      const totalCreditSales = sales
+        .filter(s => {
+          if (s.status !== 'pending') return false;
+          const isDirectSale = s.customerId === customer.id || s.customerName === customer.name;
+          if (isCashSalesCustomer) {
+            const isGuestSale = s.customerName === 'Guest' || !s.customerId;
+            return isDirectSale || isGuestSale;
+          }
+          return isDirectSale;
+        })
+        .reduce((acc, s) => {
+          const amountUSD = s.currency === 'SSP' ? (s.totalAmount / (s.exchangeRate || 1000)) : s.totalAmount;
+          return acc + amountUSD;
+        }, 0);
+
       const totalRepayments = customerPayments
         .filter(p => p.status === 'transferred' || (!p.status && p.isConfirmed))
-        .reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0);
+        .reduce((acc, p) => {
+          const reductionUSD = p.creditDeductionUSD ?? (p.currency === 'SSP' ? (p.amount / (p.exchangeRate || 1000)) : p.amount);
+          return acc + reductionUSD;
+        }, 0);
       
-      const netOwed = totalCreditSales - totalRepayments;
+      const initialBalanceUSD = customer.initialBalanceCurrency === 'SSP' 
+        ? (customer.initialBalance || 0) / 1000 
+        : (customer.initialBalance || 0);
+
+      const netOwed = initialBalanceUSD + totalCreditSales - totalRepayments;
 
       const customerCashTransactions = isCashSalesCustomer 
         ? cashTransactions.filter(t => {
@@ -551,9 +608,12 @@ export default function CustomerLedger() {
       const allTransactions = [...customerSales, ...customerPayments, ...customerCashTransactions];
       const customerExpenses: any[] = []; 
       
-      const latestTimestamp = [...allTransactions, ...customerExpenses].length > 0 
-        ? Math.max(...[...allTransactions, ...customerExpenses].map(t => new Date(t.timestamp).getTime()))
-        : new Date(customer.createdAt).getTime();
+      const latestTimestamp = Math.max(
+        customer.createdAt ? new Date(customer.createdAt).getTime() : 0,
+        customer.updatedAt ? new Date(customer.updatedAt).getTime() : 0,
+        ...allTransactions.map(t => new Date(t.timestamp).getTime()),
+        ...customerExpenses.map(t => new Date(t.timestamp).getTime())
+      );
 
       return {
         ...customer,
@@ -566,11 +626,16 @@ export default function CustomerLedger() {
         membersCount: customer.memberIds?.length || 0
       };
     }).sort((a, b) => {
-      if (a.name === 'Cash Sales') return -1;
-      if (b.name === 'Cash Sales') return 1;
       return b.lastUpdated - a.lastUpdated;
     });
-  }, [filteredCustomers, sales, payments, cashTransactions]);
+  }, [customers, sales, payments, cashTransactions]);
+
+  const filteredCustomerCredits = useMemo(() => {
+    return customerCredits.filter(c => 
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.phone && c.phone.includes(searchTerm))
+    );
+  }, [customerCredits, searchTerm]);
 
   const currentCashTransactions = useMemo(() => {
     if (!viewingCashCurrency) return [];
@@ -584,6 +649,7 @@ export default function CustomerLedger() {
         isCashIn: true,
         notes: `Sale #${s.id.slice(-6).toUpperCase()}`,
         collection: 'sales',
+        customerId: s.customerId,
         status: 'transferred' as const,
         originalData: s
       })),
@@ -600,6 +666,7 @@ export default function CustomerLedger() {
         isCashIn: true,
         notes: `Repayment from ${p.customerName}`,
         collection: 'payments',
+        customerId: p.customerId,
         status: p.status || 'transferred',
         originalData: p
       })),
@@ -612,6 +679,7 @@ export default function CustomerLedger() {
         isCashIn: false,
         notes: e.description,
         collection: 'expenses',
+        customerId: undefined,
         status: 'transferred' as const,
         originalData: e
       })),
@@ -624,6 +692,7 @@ export default function CustomerLedger() {
         isCashIn: t.type === 'in',
         notes: t.notes,
         collection: 'cashTransactions',
+        customerId: t.customerId,
         status: 'transferred' as const,
         originalData: t
       }))
@@ -637,22 +706,27 @@ export default function CustomerLedger() {
     setIsRenaming(true);
     try {
       await updateDoc(doc(db, 'customers', editingCustomerId), {
-        name: editingName.trim()
+        name: editingName.trim(),
+        updatedAt: serverTimestamp()
       });
       setEditingCustomerId(null);
     } catch (error) {
-      console.error('Error renaming customer:', error);
+      console.error('Error updating customer:', error);
     } finally {
       setIsRenaming(false);
     }
   };
 
-  const handleDeleteCustomer = async (id: string) => {
-    if (!isAdmin) return;
+  const handleDeleteCustomer = async () => {
+    if (!deleteCustomerInfo || !businessId) return;
     try {
-      await deleteDoc(doc(db, 'customers', id));
+      await deleteDoc(doc(db, 'customers', deleteCustomerInfo.id));
+      setDeleteCustomerInfo(null);
+      setActiveMenu(null);
+      setExpandedCustomer(null);
     } catch (error) {
       console.error("Error deleting customer:", error);
+      handleFirestoreError(error, OperationType.DELETE, `customers/${deleteCustomerInfo.id}`);
     }
   };
 
@@ -742,6 +816,10 @@ export default function CustomerLedger() {
         if (customer) {
           transactionData.customerId = customer.id;
           transactionData.customerName = customer.name;
+          // Update customer updatedAt to reflect activity
+          await updateDoc(doc(db, 'customers', customer.id), {
+            updatedAt: serverTimestamp()
+          });
         }
       }
 
@@ -767,10 +845,17 @@ export default function CustomerLedger() {
   };
 
   const handleDeleteTransaction = async () => {
-    if (!deleteTransactionInfo || !isAdmin) return;
+    if (!deleteTransactionInfo || !businessId) return;
 
     try {
       await deleteDoc(doc(db, deleteTransactionInfo.collection, deleteTransactionInfo.id));
+      
+      if (deleteTransactionInfo.customerId) {
+        await updateDoc(doc(db, 'customers', deleteTransactionInfo.customerId), {
+          updatedAt: serverTimestamp()
+        });
+      }
+
       setDeleteTransactionInfo(null);
       setActiveTransactionMenu(null);
     } catch (error) {
@@ -779,55 +864,55 @@ export default function CustomerLedger() {
   };
 
   if (loading) return <div className="animate-pulse space-y-6">
-    <div className="h-12 bg-white rounded-xl border border-gray-100" />
+    <div className="h-12 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700" />
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {[1,2,3,4].map(i => <div key={i} className="h-48 bg-white rounded-2xl border border-gray-100" />)}
+      {[1,2,3,4].map(i => <div key={i} className="h-48 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700" />)}
     </div>
   </div>;
 
   return (
-    <div className="space-y-6 pb-32">
+    <div className="space-y-6 pb-32 transition-colors duration-300">
       {/* Sticky Upper Level Balance Summary */}
-      <div className="sticky top-0 z-30 pt-2 pb-2 sm:pt-3 sm:pb-3 bg-gray-50/95 backdrop-blur-md -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-gray-100">
+      <div className="sticky top-0 z-30 pt-2 pb-2 sm:pt-3 sm:pb-3 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-gray-100 dark:border-gray-800">
         
         {/* Mobile Version - Compact Grid */}
-        <div className="md:hidden flex flex-col gap-2 max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 gap-2 flex-1">
+        <div className="md:hidden flex flex-col gap-1.5 max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden text-center">
             <button 
               onClick={() => setViewingCashCurrency('USD')}
-              className="flex flex-col items-center justify-center bg-green-600 rounded-xl p-2 text-white shadow-lg shadow-green-100 hover:bg-green-700 transition-all active:scale-95 group"
+              className="py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-r border-b border-gray-100 dark:border-gray-700"
             >
-              <p className="text-[7px] font-black uppercase tracking-widest mb-0.5 opacity-80 group-hover:opacity-100 transition-opacity">Cash Sales (USD)</p>
-              <h2 className="text-xs font-black tracking-tight leading-none">
-                ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cashInHandUSD)}
+              <p className="text-[9px] font-black uppercase tracking-tighter text-gray-500 mb-0.5">USD Cash</p>
+              <h2 className="text-sm font-black text-emerald-600 leading-none">
+                ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cashInHandUSD)}
               </h2>
             </button>
 
             <button 
               onClick={() => setViewingCashCurrency('SSP')}
-              className="flex flex-col items-center justify-center bg-green-600 rounded-xl p-2 text-white shadow-lg shadow-green-100 hover:bg-green-700 transition-all active:scale-95 group"
+              className="py-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700"
             >
-              <p className="text-[7px] font-black uppercase tracking-widest mb-0.5 opacity-80 group-hover:opacity-100 transition-opacity">Cash Sales (SSP)</p>
-              <h2 className="text-xs font-black tracking-tight leading-none">
+              <p className="text-[9px] font-black uppercase tracking-tighter text-gray-500 mb-0.5">SSP Cash</p>
+              <h2 className="text-sm font-black text-emerald-600 leading-none">
                 {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cashInHandSSP)}
               </h2>
             </button>
 
-            <div className="flex flex-col items-center justify-center bg-red-600 rounded-xl p-2 text-white shadow-lg shadow-red-100 col-span-2">
-              <p className="text-[7px] font-black uppercase tracking-widest mb-0.5 opacity-80">Outstanding Balance</p>
-              <h2 className="text-xs font-black tracking-tight leading-none">
-                {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(customerCredits.reduce((acc, c) => acc + c.totalOwed, 0))}
+            <div className="col-span-2 py-2 bg-rose-50/50 dark:bg-rose-900/20">
+              <p className="text-[9px] font-black uppercase tracking-tighter text-rose-500 mb-0.5">Debt Balance</p>
+              <h2 className="text-sm font-black text-rose-600 leading-none">
+                ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(customerCredits.reduce((acc, c) => acc + c.totalOwed, 0))}
               </h2>
             </div>
           </div>
 
           {/* Search Bar in Header (Mobile) */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
             <input 
               type="text" 
               placeholder="Search customers..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm placeholder:text-gray-400"
+              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -835,17 +920,17 @@ export default function CustomerLedger() {
         </div>
 
         {/* Desktop Version - Luxury / Prestige Bar */}
-        <div className="hidden md:flex items-center justify-between bg-[#fdfcfb] rounded-3xl border border-[#e5e1da] p-1 shadow-sm max-w-7xl mx-auto w-full">
-          <div className="flex items-center flex-1 divide-x divide-[#e5e1da]">
+        <div className="hidden md:flex items-center justify-between bg-[#fdfcfb] dark:bg-gray-800 rounded-3xl border border-[#e5e1da] dark:border-gray-700 p-1 shadow-sm max-w-7xl mx-auto w-full">
+          <div className="flex items-center flex-1 divide-x divide-[#e5e1da] dark:divide-gray-700">
             {/* USD */}
             <button 
               onClick={() => setViewingCashCurrency('USD')}
-              className="flex-1 px-10 py-6 hover:bg-[#f5f2ed] transition-all group text-left"
+              className="flex-1 px-4 py-3 hover:bg-[#f5f2ed] dark:hover:bg-gray-700/50 transition-all group text-left"
             >
-              <p className="text-[10px] font-medium text-[#a8a29e] uppercase tracking-[0.25em] mb-2">Cash Holdings (USD)</p>
+              <p className="text-[10px] font-bold text-[#a8a29e] dark:text-gray-400 uppercase tracking-widest mb-0.5">Holding (USD)</p>
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-serif italic text-[#78716c]">$</span>
-                <h2 className="text-3xl font-serif text-[#1c1917] tracking-tight group-hover:text-indigo-900 transition-colors">
+                <span className="text-xs font-serif italic text-[#78716c] dark:text-gray-500">$</span>
+                <h2 className="text-xl font-serif text-[#1c1917] dark:text-white tracking-tight group-hover:text-indigo-900 dark:group-hover:text-indigo-400 transition-colors">
                   {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cashInHandUSD)}
                 </h2>
               </div>
@@ -854,33 +939,32 @@ export default function CustomerLedger() {
             {/* SSP */}
             <button 
               onClick={() => setViewingCashCurrency('SSP')}
-              className="flex-1 px-10 py-6 hover:bg-[#f5f2ed] transition-all group text-left"
+              className="flex-1 px-4 py-3 hover:bg-[#f5f2ed] dark:hover:bg-gray-700/50 transition-all group text-left"
             >
-              <p className="text-[10px] font-medium text-[#a8a29e] uppercase tracking-[0.25em] mb-2">Cash Holdings (SSP)</p>
+              <p className="text-[10px] font-bold text-[#a8a29e] dark:text-gray-400 uppercase tracking-widest mb-0.5">Holding (SSP)</p>
               <div className="flex items-baseline gap-1">
-                <h2 className="text-3xl font-serif text-[#1c1917] tracking-tight group-hover:text-indigo-900 transition-colors">
+                <h2 className="text-xl font-serif text-[#1c1917] dark:text-white tracking-tight group-hover:text-indigo-900 dark:group-hover:text-indigo-400 transition-colors">
                   {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cashInHandSSP)}
                 </h2>
-                <span className="text-[10px] font-serif italic text-[#78716c] ml-1">SSP</span>
+                <span className="text-[10px] font-serif italic text-[#78716c] dark:text-gray-500 ml-1">SSP</span>
               </div>
             </button>
 
-            {/* Debt */}
-            <div className="flex-1 px-10 py-6 text-left bg-[#fffaf5]">
-              <p className="text-[10px] font-medium text-rose-400 uppercase tracking-[0.25em] mb-2">Total Outstanding</p>
-              <h2 className="text-3xl font-serif text-rose-700 tracking-tight">
-                {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(customerCredits.reduce((acc, c) => acc + c.totalOwed, 0))}
+            <div className="flex-1 px-4 py-3 text-left bg-[#fffaf5] dark:bg-red-900/10">
+              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-0.5">Outstanding</p>
+              <h2 className="text-xl font-serif text-rose-700 dark:text-rose-400 tracking-tight">
+                ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(customerCredits.reduce((acc, c) => acc + c.totalOwed, 0))}
               </h2>
             </div>
           </div>
 
           {/* Search */}
           <div className="relative w-80 mx-6 group">
-            <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e] group-focus-within:text-indigo-600 transition-colors" />
+            <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e] dark:text-gray-500 group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400 transition-colors" />
             <input 
               type="text" 
               placeholder="Search customers..."
-              className="w-full pl-8 py-3 bg-transparent border-b border-[#e5e1da] text-sm font-serif italic focus:border-indigo-400 outline-none transition-all placeholder:text-[#d6d3d1]"
+              className="w-full pl-8 py-3 bg-transparent border-b border-[#e5e1da] dark:border-gray-700 text-sm font-serif italic focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all placeholder:text-[#d6d3d1] dark:placeholder:text-gray-600 dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -892,68 +976,93 @@ export default function CustomerLedger() {
         <AnimatePresence>
           {isAddingInline && (
             <motion.div 
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl border-2 border-indigo-500 shadow-xl p-3 flex items-center gap-3 z-20 relative"
+              className="p-6 bg-white dark:bg-gray-800 rounded-2xl border border-indigo-200 dark:border-indigo-800 shadow-xl space-y-4"
             >
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 shadow-inner">
-                <UserPlus className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/40 rounded-xl flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">New Customer</h3>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">Registration</p>
+                </div>
               </div>
-              <form 
-                onSubmit={handleInlineAdd}
-                className="flex-1 flex items-center gap-2"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <form onSubmit={handleInlineAdd} className="space-y-3">
                 <input
                   autoFocus
                   type="text"
                   placeholder="Enter customer name..."
                   value={newInlineName}
                   onChange={(e) => setNewInlineName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Escape' && setIsAddingInline(false)}
-                  className="flex-1 px-2 py-1.5 text-sm font-black text-gray-900 border-b-2 border-indigo-500 outline-none bg-indigo-50/30 rounded-t transition-all"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                 />
-                <div className="flex items-center gap-1">
-                  <button 
-                    type="submit"
-                    disabled={isSubmittingCustomer || !newInlineName.trim()}
-                    className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-5 h-5" />
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setIsAddingInline(false)}
-                    className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition-all"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex-1 flex items-center bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                    <div className="pl-3 py-2 text-gray-400">
+                      <Wallet className="w-4 h-4" />
+                    </div>
+                    <input 
+                      type="number"
+                      step="0.01"
+                      placeholder="Start Balance"
+                      className="flex-1 px-3 py-2 bg-transparent text-xs font-bold text-gray-900 dark:text-white outline-none w-full min-w-0"
+                      value={newInlineBalance}
+                      onChange={e => setNewInlineBalance(e.target.value)}
+                    />
+                    <select
+                      value={newInlineCurrency}
+                      onChange={(e) => setNewInlineCurrency(e.target.value as Currency)}
+                      className="px-3 py-2 text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 outline-none border-l border-gray-100 dark:border-gray-700 h-full"
+                    >
+                      <option value="USD">USD</option>
+                      <option value="SSP">SSP</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2 h-full">
+                    <button
+                      type="submit"
+                      disabled={isSubmittingCustomer || !newInlineName.trim()}
+                      className="flex-1 py-1.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50"
+                    >
+                      {isSubmittingCustomer ? 'Adding...' : 'Add Customer'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingInline(false)}
+                      className="px-4 sm:px-6 py-1.5 sm:py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </form>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {customerCredits.map((customer, index) => (
+        {filteredCustomerCredits.map((customer, index) => (
           <motion.div 
             key={customer.id}
             layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: -20, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
             whileHover={{ scale: 1.01, y: -2, zIndex: 10 }}
             transition={{ 
               layout: { type: "spring", stiffness: 300, damping: 30 },
-              delay: Math.min(index * 0.01, 0.2), // Further reduced delay
-              duration: 0.2,
+              delay: index * 0.05, // Distinct staggered delay for "one by one" effect
+              duration: 0.6,
               type: "spring",
-              stiffness: 260,
-              damping: 25
+              stiffness: 100,
+              damping: 15
             }}
             className={cn(
-              "bg-white rounded-2xl border border-gray-100 shadow-sm relative group overflow-hidden",
-              "hover:border-indigo-100 hover:shadow-md",
-              expandedCustomer === customer.id ? "ring-1 ring-indigo-500" : ""
+              "bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm relative group",
+              "hover:border-indigo-100 dark:hover:border-indigo-900 hover:shadow-md",
+              expandedCustomer === customer.id ? "ring-1 ring-indigo-500 dark:ring-indigo-400" : "",
+              activeMenu === customer.id ? "z-[50]" : "z-0"
             )}
           >
             {/* List Item Content */}
@@ -962,14 +1071,14 @@ export default function CustomerLedger() {
                 setExpandedCustomer(customer.id);
                 window.scrollTo({ top: 0, behavior: 'instant' });
               }}
-              className="p-2 sm:p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-gray-50/50 transition-colors rounded-2xl"
+              className="p-1 sm:p-2 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors rounded-2xl"
             >
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xs sm:text-sm shadow-inner shrink-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-[9px] sm:text-[10px] shadow-inner shrink-0 leading-none">
                   {customer.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify-between gap-1.5">
                     {editingCustomerId === customer.id ? (
                       <form 
                         onSubmit={handleRename}
@@ -981,44 +1090,46 @@ export default function CustomerLedger() {
                           type="text"
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
-                          onBlur={() => !isRenaming && setEditingCustomerId(null)}
-                          className="flex-1 px-2 py-1 text-xs sm:text-sm font-black text-gray-900 border-b-2 border-indigo-500 outline-none bg-indigo-50/50 rounded-t"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') setEditingCustomerId(null);
+                          }}
+                          className="flex-1 px-2 py-1 text-[10px] sm:text-xs font-black text-gray-900 dark:text-white border-b-2 border-indigo-500 outline-none bg-indigo-50/50 dark:bg-indigo-900/20 rounded-t"
                         />
                         <button 
                           type="submit"
                           disabled={isRenaming || !editingName.trim()}
-                          className="text-green-600 hover:text-green-700 disabled:opacity-50"
+                          className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 disabled:opacity-50"
                         >
-                          <CheckCircle2 className="w-4 h-4" />
+                          <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>
                         <button 
                           type="button"
                           onClick={() => setEditingCustomerId(null)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       </form>
                     ) : (
                       <>
-                        <h3 className="font-black text-gray-900 text-xs sm:text-sm tracking-tight truncate">{customer.name}</h3>
+                        <h3 className="font-black text-gray-900 dark:text-white text-[10px] sm:text-xs tracking-tight truncate">{customer.name}</h3>
                         <p className={cn(
-                          "text-sm font-black tracking-tighter",
-                          customer.totalOwed > 0 ? "text-red-600" : "text-green-600"
+                          "text-xs font-black tracking-tighter",
+                          customer.totalOwed > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                         )}>
                           {formatCurrency(customer.totalOwed)}
                         </p>
                       </>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[7px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-indigo-50 text-indigo-600 flex items-center gap-1">
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[6px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5">
                       <Users className="w-2 h-2" />
-                      {customer.membersCount} Members
+                      {customer.membersCount}
                     </span>
-                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
-                      <Clock className="w-2.5 h-2.5" />
-                      Updated {formatDistanceToNow(new Date(customer.lastUpdated))} ago
+                    <span className="text-[7px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-0.5">
+                      <Clock className="w-2 h-2" />
+                      {formatDistanceToNow(new Date(customer.lastUpdated))}
                     </span>
                   </div>
                 </div>
@@ -1032,7 +1143,7 @@ export default function CustomerLedger() {
                 >
                   <button 
                     onClick={() => setActiveMenu(activeMenu === customer.id ? null : customer.id)}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
@@ -1043,38 +1154,45 @@ export default function CustomerLedger() {
                         initial={{ opacity: 0, scale: 0.95, y: -10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        className="absolute right-0 top-full pt-1 z-[120]"
+                        className="absolute right-0 top-full z-[120]"
                       >
-                        <div className="w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 overflow-hidden">
-                          <button 
-                            onClick={() => { 
-                              setActiveMenu(null); 
-                              setEditingCustomerId(customer.id);
-                              setEditingName(customer.name);
-                            }} 
-                            className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" /> Rename Book
-                          </button>
-                          <button 
-                            onClick={() => handleDuplicateCustomer(customer)} 
-                            className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <Copy className="w-3.5 h-3.5" /> Duplicate Book
-                          </button>
-                          <button onClick={() => { setActiveMenu(null); navigate('/members'); }} className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                            <UserPlus className="w-3.5 h-3.5" /> Add Members
-                          </button>
-                          <button onClick={() => setActiveMenu(null)} className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                            <Move className="w-3.5 h-3.5" /> Move Book
-                          </button>
-                          <div className="h-px bg-gray-100 my-1" />
-                          <button 
-                            onClick={() => { setActiveMenu(null); handleDeleteCustomer(customer.id); }}
-                            className="w-full px-4 py-2 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2"
-                          >
-                            <Trash className="w-3.5 h-3.5" /> Delete Book
-                          </button>
+                        <div className="p-12 -m-12 pt-1">
+                          <div className="w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1.5 overflow-hidden">
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation();
+                                setActiveMenu(null); 
+                                setEditingCustomerId(customer.id);
+                                setEditingName(customer.name);
+                              }} 
+                              className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Edit Book
+                            </button>
+                            <button 
+                              onClick={() => handleDuplicateCustomer(customer)} 
+                              className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                            >
+                              <Copy className="w-3.5 h-3.5" /> Duplicate Book
+                            </button>
+                            <button onClick={() => { setActiveMenu(null); navigate('/members'); }} className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">
+                              <UserPlus className="w-3.5 h-3.5" /> Add Members
+                            </button>
+                            <button onClick={() => setActiveMenu(null)} className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">
+                              <Move className="w-3.5 h-3.5" /> Move Book
+                            </button>
+                            <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenu(null);
+                                setDeleteCustomerInfo({ id: customer.id, name: customer.name });
+                              }}
+                              className="w-full px-4 py-2 text-left text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                            >
+                              <Trash className="w-3.5 h-3.5" /> Delete Book
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -1122,21 +1240,21 @@ export default function CustomerLedger() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: '100%' }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-0 z-[200] bg-gray-50 flex flex-col overflow-hidden"
+              className="fixed inset-0 z-[200] bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden"
             >
               {/* Header */}
-              <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0">
+              <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-3 shrink-0">
                 <button 
                   onClick={() => setExpandedCustomer(null)}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-black text-gray-900 truncate">{customer.name}</h3>
+                  <h3 className="text-base font-black text-gray-900 dark:text-white truncate">{customer.name}</h3>
                   <p className={cn(
                     "text-[11px] font-black tracking-tighter",
-                    customer.totalOwed > 0 ? "text-red-600" : "text-green-600"
+                    customer.totalOwed > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                   )}>
                     Balance: {formatCurrency(customer.totalOwed)}
                   </p>
@@ -1144,7 +1262,7 @@ export default function CustomerLedger() {
                 <div className="flex gap-1 relative" ref={exportMenuRef}>
                   <button 
                     onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                    className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2"
+                    className="p-2.5 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-all flex items-center gap-2"
                   >
                     <FileDown className="w-5 h-5" />
                     <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Extract</span>
@@ -1156,14 +1274,14 @@ export default function CustomerLedger() {
                         initial={{ opacity: 0, scale: 0.95, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        className="absolute right-0 top-full mt-2 z-[210] w-40 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 overflow-hidden"
+                        className="absolute right-0 top-full mt-2 z-[210] w-40 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1.5 overflow-hidden"
                       >
                         <button 
                           onClick={() => {
                             setIsExportMenuOpen(false);
                             exportToPDF(customer, transactions);
                           }}
-                          className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
                         >
                           <FileText className="w-4 h-4 text-red-500" /> Export PDF
                         </button>
@@ -1172,7 +1290,7 @@ export default function CustomerLedger() {
                             setIsExportMenuOpen(false);
                             exportToExcel(customer, transactions);
                           }}
-                          className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
                         >
                           <FileSpreadsheet className="w-4 h-4 text-green-500" /> Export Excel
                         </button>
@@ -1186,9 +1304,9 @@ export default function CustomerLedger() {
               <div className="flex-1 overflow-y-auto p-3 space-y-4 pb-32">
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white p-1.5 rounded-lg border border-gray-100 shadow-sm text-center">
-                    <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Total Credit</p>
-                    <p className="text-xs font-black text-red-600">
+                  <div className="bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                    <p className="text-[7px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-0.5">Total Credit</p>
+                    <p className="text-xs font-black text-red-600 dark:text-red-400">
                       {formatCurrency(customer.sales.filter(s => s.status === 'pending').reduce((acc, s) => {
                         if (s.currency === 'SSP') {
                           const rate = s.exchangeRate || 1000;
@@ -1198,9 +1316,9 @@ export default function CustomerLedger() {
                       }, 0))}
                     </p>
                   </div>
-                  <div className="bg-white p-1.5 rounded-lg border border-gray-100 shadow-sm text-center">
-                    <p className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Total Paid</p>
-                    <p className="text-xs font-black text-green-600">
+                  <div className="bg-white dark:bg-gray-800 p-1.5 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm text-center">
+                    <p className="text-[7px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-0.5">Total Paid</p>
+                    <p className="text-xs font-black text-green-600 dark:text-green-400">
                       {formatCurrency(customer.payments.reduce((acc, p) => acc + (p.creditDeductionUSD ?? p.amount), 0))}
                     </p>
                   </div>
@@ -1209,32 +1327,38 @@ export default function CustomerLedger() {
                 {/* Transaction History */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between px-0.5">
-                    <h4 className="text-[9px] font-black text-gray-900 uppercase tracking-widest">Transaction History</h4>
-                    <span className="text-[7px] font-bold text-gray-400">{transactions.length} Records</span>
+                    <h4 className="text-[9px] font-black text-gray-900 dark:text-gray-100 uppercase tracking-widest">Transaction History</h4>
+                    <span className="text-[7px] font-bold text-gray-400 dark:text-gray-500">{transactions.length} Records</span>
                   </div>
                   
                   <div className="space-y-1.5">
-                    {transactions.map((item: any) => (
-                      <div 
+                    {transactions.map((item: any, index: number) => (
+                      <motion.div 
                         key={item.id} 
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.03, duration: 0.4 }}
                         onClick={() => handleEditTransaction(item, customer)}
-                        className="bg-white p-2 rounded-xl border border-gray-100 flex items-center justify-between gap-2 shadow-sm hover:border-indigo-100 transition-all cursor-pointer hover:bg-gray-50"
+                        className={cn(
+                          "bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2 shadow-sm hover:border-indigo-100 dark:hover:border-indigo-900 transition-all cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50",
+                          activeCustomerTransactionMenu === item.id ? "relative z-[50]" : "relative z-0"
+                        )}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={cn(
                             "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
-                            item.isPayment || item.isExpense ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                            item.isPayment || item.isExpense ? "bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400"
                           )}>
                             {item.isPayment || item.isExpense ? <TrendingDown className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">
+                            <p className="text-[8px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                               {format(new Date(item.timestamp), 'MMM dd, yyyy')}
                             </p>
-                            <p className="font-bold text-gray-900 text-[11px] truncate leading-tight">
+                            <p className="font-bold text-gray-900 dark:text-white text-[11px] truncate leading-tight">
                               {item.notes || (item.isPayment ? 'Repayment' : item.isExpense ? 'Expense' : 'Credit Sale')}
                               {item.collection === 'payments' && item.status === 'pending' && (
-                                <span className="ml-2 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[7px] font-black uppercase tracking-widest border border-amber-100">
+                                <span className="ml-2 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-md text-[7px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-900/50">
                                   Pending Transfer
                                 </span>
                               )}
@@ -1242,7 +1366,7 @@ export default function CustomerLedger() {
                             {!item.isPayment && item.items && item.items.length > 0 && (
                               <div className="mt-1 flex flex-wrap gap-1">
                                 {item.items.map((saleItem: any, idx: number) => (
-                                  <span key={idx} className="text-[8px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded-md border border-gray-100">
+                                  <span key={idx} className="text-[8px] px-1.5 py-0.5 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-md border border-gray-100 dark:border-gray-700">
                                     {saleItem.quantity}x {saleItem.name}
                                   </span>
                                 ))}
@@ -1254,7 +1378,7 @@ export default function CustomerLedger() {
                           <div className="flex items-center gap-1">
                             <div className={cn(
                               "text-[10px] font-black flex flex-col items-end",
-                              item.isPayment || item.isExpense ? "text-red-600" : "text-green-600"
+                              item.isPayment || item.isExpense ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                             )}>
                                {item.isPayment && (item.amountUSD !== undefined || item.amountSSP !== undefined) ? (
                                 <div className="space-y-0.5">
@@ -1262,7 +1386,7 @@ export default function CustomerLedger() {
                                   {item.amountSSP > 0 && (
                                     <div className="flex flex-col items-end">
                                       <span>-{item.amountSSP.toLocaleString('en-US')} SSP</span>
-                                      <span className="text-[9px] text-gray-500 font-bold tracking-tight italic">
+                                      <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold tracking-tight italic">
                                         (${item.creditDeductionUSD?.toFixed(2) || (item.amountSSP / (item.exchangeRate || 1000)).toFixed(2)})
                                       </span>
                                     </div>
@@ -1278,54 +1402,62 @@ export default function CustomerLedger() {
                                     {item.currency === 'SSP' ? ' SSP' : ''}
                                   </span>
                                   {item.currency === 'SSP' && (
-                                    <span className="text-[9px] text-gray-500 font-bold tracking-tight italic">
+                                    <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold tracking-tight italic">
                                       ({item.isPayment || item.isExpense ? '-' : '+'}${item.creditDeductionUSD?.toFixed(2) || ((item.amount || item.totalAmount) / (item.exchangeRate || 1000)).toFixed(2)})
                                     </span>
                                   )}
                                 </div>
                               )}
                             </div>
-                            <div className="relative">
+                            <div 
+                              className="relative"
+                              onMouseLeave={() => activeCustomerTransactionMenu === item.id && setActiveCustomerTransactionMenu(null)}
+                            >
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveCustomerTransactionMenu(activeCustomerTransactionMenu === item.id ? null : item.id);
                                 }}
-                                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                               >
-                                <MoreVertical className="w-3 h-3 text-gray-400" />
+                                <MoreVertical className="w-3 h-3 text-gray-400 dark:text-gray-500" />
                               </button>
                               
                                {activeCustomerTransactionMenu === item.id && (
                                 <div 
                                   ref={transactionMenuRef}
-                                  className="absolute right-0 top-full mt-1 w-32 bg-white rounded-xl shadow-xl border border-gray-100 z-[210] py-1 overflow-hidden"
+                                  className="absolute right-0 top-full z-[210]"
                                 >
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleEditTransaction(item, customer);
-                                    }}
-                                    className="w-full px-3 py-2 text-left text-[10px] font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2 uppercase tracking-wider"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                    Edit
-                                  </button>
-                                  <button 
-                                    disabled={!isAdmin}
-                                    onClick={() => {
-                                      setDeleteTransactionInfo({ 
-                                        id: item.id, 
-                                        collection: item.collection, 
-                                        type: item.collection === 'payments' ? 'Repayment' : item.collection === 'sales' ? 'Credit Sale' : item.collection === 'expenses' ? 'Expense' : 'Manual Entry'
-                                      });
-                                      setActiveCustomerTransactionMenu(null);
-                                    }}
-                                    className="w-full px-3 py-2 text-left text-[10px] font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 uppercase tracking-wider disabled:opacity-50"
-                                  >
-                                    <Trash className="w-3 h-3" />
-                                    Delete
-                                  </button>
+                                  <div className="p-12 -m-12 pt-1">
+                                    <div className="w-32 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleEditTransaction(item, customer);
+                                        }}
+                                        className="w-full px-3 py-2 text-left text-[10px] font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 uppercase tracking-wider"
+                                      >
+                                        <Edit3 className="w-3 h-3" />
+                                        Edit
+                                      </button>
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteTransactionInfo({ 
+                                            id: item.id, 
+                                            collection: item.collection, 
+                                            type: item.collection === 'payments' ? 'Repayment' : item.collection === 'sales' ? 'Credit Sale' : item.collection === 'expenses' ? 'Expense' : 'Manual Entry',
+                                            customerId: customer.id
+                                          });
+                                          setActiveCustomerTransactionMenu(null);
+                                        }}
+                                        className="w-full px-3 py-2 text-left text-[10px] font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 uppercase tracking-wider"
+                                      >
+                                        <Trash className="w-3 h-3" />
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1337,30 +1469,52 @@ export default function CustomerLedger() {
                                   setPreviewUrl(item.attachmentUrl);
                                   setPreviewType(item.attachmentType);
                                 }}
-                                className="p-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-all flex items-center gap-1"
+                                className="p-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center gap-1"
                                 title="View Attachment"
                               >
                                 {item.attachmentType === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
                                 <span className="text-[8px] font-black uppercase tracking-widest">View</span>
                               </button>
                             )}
+                            {item.collection === 'payments' && item.status === 'pending' && (
+                              <button 
+                                onClick={async () => {
+                                  try {
+                                    await updateDoc(doc(db, 'payments', item.id), {
+                                      status: 'transferred',
+                                      updatedAt: serverTimestamp()
+                                    });
+                                    // Update customer document's updatedAt
+                                    await updateDoc(doc(db, 'customers', customer.id), {
+                                      updatedAt: serverTimestamp()
+                                    });
+                                  } catch (error) {
+                                    console.error("Error confirming payment:", error);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-green-100 dark:hover:bg-green-800 transition-all flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                Confirm Transfer
+                              </button>
+                            )}
                             {!item.isPayment && item.status === 'pending' && (
                               <button 
-                                onClick={() => handleMarkAsPaid(item.id)}
-                                className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all"
+                                onClick={() => handleMarkAsPaid(item.id, customer.id)}
+                                className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-100 dark:hover:bg-indigo-800 transition-all"
                               >
                                 Mark Paid
                               </button>
                             )}
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
 
                     {transactions.length === 0 && (
-                      <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200">
-                        <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">No transactions yet</p>
+                      <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                        <Clock className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                        <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">No transactions yet</p>
                       </div>
                     )}
                   </div>
@@ -1368,11 +1522,11 @@ export default function CustomerLedger() {
               </div>
 
               {/* Bottom Actions */}
-              <div className="p-4 bg-white border-t border-gray-200 space-y-3 shrink-0">
+              <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 space-y-3 shrink-0">
                 <div className="grid grid-cols-2 gap-3">
                   <button 
                     onClick={() => navigate('/pos', { state: { customerId: customer.id } })}
-                    className="flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-100 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 py-3 bg-green-600 dark:bg-green-700 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 dark:hover:bg-green-600 transition-all shadow-lg shadow-green-100 dark:shadow-none disabled:opacity-50"
                   >
                     <PlusCircle className="w-4 h-4" />
                     {customer.name === 'Cash Sales' ? 'Cash In (Sale)' : 'New Sale'}
@@ -1388,7 +1542,7 @@ export default function CustomerLedger() {
                         setIsPaymentModalOpen(true);
                       }
                     }}
-                    className="flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-100 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 py-3 bg-red-600 dark:bg-red-700 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 dark:hover:bg-red-600 transition-all shadow-lg shadow-red-100 dark:shadow-none disabled:opacity-50"
                   >
                     <DollarSign className="w-4 h-4" />
                     {customer.name === 'Cash Sales' ? 'Cash Out (Pay)' : 'Repayment'}
@@ -1453,6 +1607,12 @@ export default function CustomerLedger() {
               </button>
             </div>
             <form onSubmit={handleRecordPayment} className="p-4 lg:p-6 space-y-4" autoComplete="off">
+              {paymentError && (
+                <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                  <p className="text-[11px] font-bold text-red-600 leading-tight">{paymentError}</p>
+                </div>
+              )}
               <div className="p-3 lg:p-4 bg-indigo-50 rounded-xl mb-4">
                 <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Customer</p>
                 <p className="text-base lg:text-lg font-black text-indigo-900">{selectedCustomerForPayment.name}</p>
@@ -1489,15 +1649,26 @@ export default function CustomerLedger() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] lg:text-xs font-bold text-gray-500 uppercase tracking-wider">Exchange Rate (1 USD = ? SSP)</label>
-                <input 
-                  type="text" 
-                  inputMode="numeric"
-                  className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
-                  value={paymentExchangeRate}
-                  onChange={e => setPaymentExchangeRate(formatInputNumber(e.target.value))}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] lg:text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Date</label>
+                  <input 
+                    type="date"
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                    value={paymentDate}
+                    onChange={e => setPaymentDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] lg:text-xs font-bold text-gray-500 uppercase tracking-wider">Exchange Rate (1 USD = ? SSP)</label>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                    value={paymentExchangeRate}
+                    onChange={e => setPaymentExchangeRate(formatInputNumber(e.target.value))}
+                  />
+                </div>
               </div>
 
               <div className="p-3 bg-indigo-50 rounded-xl">
@@ -1592,7 +1763,7 @@ export default function CustomerLedger() {
             <User className="w-8 h-8 text-gray-300" />
           </div>
           <h3 className="text-lg font-bold text-gray-900">No customers registered</h3>
-          <p className="text-gray-500">Add customers in the "Customers" tab to track their credit.</p>
+          <p className="text-gray-500">Add customers to track their credit and payment history.</p>
         </div>
       )}
 
@@ -1715,7 +1886,10 @@ export default function CustomerLedger() {
                       <div 
                         key={item.id} 
                         onClick={() => handleEditCashTransaction(item)}
-                        className="bg-white p-2 rounded-xl border border-gray-100 flex items-center justify-between gap-2 shadow-sm relative group cursor-pointer hover:bg-gray-50 hover:border-indigo-100 transition-all"
+                        className={cn(
+                          "bg-white p-2 rounded-xl border border-gray-100 flex items-center justify-between gap-2 shadow-sm relative group cursor-pointer hover:bg-gray-50 hover:border-indigo-100 transition-all",
+                          activeTransactionMenu === item.id ? "z-[50]" : "z-0"
+                        )}
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <div className={cn(
@@ -1729,7 +1903,10 @@ export default function CustomerLedger() {
                               <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">
                                 {format(new Date(item.timestamp), 'MMM dd, yyyy')}
                               </p>
-                              <div className="relative">
+                              <div 
+                                className="relative"
+                                onMouseLeave={() => activeTransactionMenu === item.id && setActiveTransactionMenu(null)}
+                              >
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1743,30 +1920,38 @@ export default function CustomerLedger() {
                                 {activeTransactionMenu === item.id && (
                                   <div 
                                     ref={transactionMenuRef}
-                                    className="absolute right-0 top-full mt-1 w-38 bg-white rounded-xl shadow-xl border border-gray-100 z-[210] py-1 overflow-hidden"
+                                    className="absolute right-0 top-full z-[210]"
                                   >
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditCashTransaction(item);
-                                      }}
-                                      className="w-full px-3 py-2 text-left text-[10px] font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2 uppercase tracking-wider"
-                                    >
-                                      <Edit3 className="w-3 h-3" />
-                                      Edit
-                                    </button>
-                                    <button 
-                                      disabled={!isAdmin}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeleteTransactionInfo({ id: item.id, collection: item.collection, type: item.type });
-                                        setActiveTransactionMenu(null);
-                                      }}
-                                      className="w-full px-3 py-2 text-left text-[10px] font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 uppercase tracking-wider disabled:opacity-50"
-                                    >
-                                      <Trash className="w-3 h-3" />
-                                      Delete
-                                    </button>
+                                    <div className="p-12 -m-12 pt-1">
+                                      <div className="w-38 bg-white rounded-xl shadow-xl border border-gray-100 z-[210] py-1 overflow-hidden">
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditCashTransaction(item);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-[10px] font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2 uppercase tracking-wider"
+                                        >
+                                          <Edit3 className="w-3 h-3" />
+                                          Edit
+                                        </button>
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDeleteTransactionInfo({ 
+                                              id: item.id, 
+                                              collection: item.collection, 
+                                              type: item.type,
+                                              customerId: item.customerId
+                                            });
+                                            setActiveTransactionMenu(null);
+                                          }}
+                                          className="w-full px-3 py-2 text-left text-[10px] font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 uppercase tracking-wider"
+                                        >
+                                          <Trash className="w-3 h-3" />
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -1954,26 +2139,55 @@ export default function CustomerLedger() {
       {/* Delete Transaction Confirmation Modal */}
       {deleteTransactionInfo && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
-            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <AlertCircle className="w-6 h-6 text-red-600" />
+          <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
+            <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4 mx-auto">
+              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 text-center mb-2 uppercase tracking-tight">Delete Transaction?</h3>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              Are you sure you want to delete this <span className="font-black text-gray-900">{deleteTransactionInfo.type}</span>? This action cannot be undone and will affect your cash balance.
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center mb-2 uppercase tracking-tight">Delete Transaction?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+              Are you sure you want to delete this <span className="font-black text-gray-900 dark:text-white">{deleteTransactionInfo.type}</span>? This action cannot be undone and will affect your cash balance.
             </p>
             <div className="flex gap-3">
               <button 
                 onClick={() => setDeleteTransactionInfo(null)}
-                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleDeleteTransaction}
-                className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+                className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-100 dark:shadow-none"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Customer Confirmation Modal */}
+      {deleteCustomerInfo && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in duration-200 border border-red-100 dark:border-red-900/20">
+            <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-5 mx-auto">
+              <Trash className="w-7 h-7 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-xl font-black text-gray-900 dark:text-white text-center mb-2 uppercase tracking-tight">Delete Customer Book?</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-8 leading-relaxed">
+              Are you sure you want to delete <span className="font-black text-indigo-600 dark:text-indigo-400">"{deleteCustomerInfo.name}"</span>? This will permanently erase all sales, payments, and history.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleDeleteCustomer}
+                className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-[0.2em] hover:bg-red-700 transition-all shadow-xl shadow-red-200 dark:shadow-none"
+              >
+                Delete Everything
+              </button>
+              <button 
+                onClick={() => setDeleteCustomerInfo(null)}
+                className="w-full py-4 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-gray-100 dark:hover:bg-gray-600 transition-all"
+              >
+                Keep Book
               </button>
             </div>
           </div>

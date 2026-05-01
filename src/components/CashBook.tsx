@@ -101,7 +101,7 @@ export default function CashBook() {
   }, [businessId]);
 
   // Combine all transactions for the cash book
-  const allTransactions = [
+  const allTransactions = React.useMemo(() => [
     ...sales.flatMap(s => {
       const parts = [];
       const amountUSD = s.amountUSD !== undefined ? s.amountUSD : (s.currency === 'USD' ? s.totalAmount : 0);
@@ -279,9 +279,9 @@ export default function CashBook() {
         collection: 'cashTransactions',
         status: 'transferred'
       }))
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [sales, payments, expenses, cashTransactions]);
 
-  const filteredTransactions = allTransactions.filter(t => {
+  const filteredTransactions = React.useMemo(() => allTransactions.filter(t => {
     const matchesSearch = t.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.id.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -305,66 +305,66 @@ export default function CashBook() {
     }
     
     return true;
-  });
-
-  const totalCash = filteredTransactions.reduce((acc, t) => acc + t.amount, 0);
+  }), [allTransactions, searchTerm, filterType, selectedDate, selectedMonth, selectedYear, startDate, endDate]);
 
   // Group by date for Daily Summary
-  const groupedByDate = filteredTransactions.reduce((acc: any, t) => {
-    const dateKey = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Juba',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(new Date(t.timestamp));
+  const dailySummaries = React.useMemo(() => {
+    const groupedByDate = filteredTransactions.reduce((acc: any, t) => {
+      const dateKey = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Juba',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(t.timestamp));
 
-    if (!acc[dateKey]) {
-      acc[dateKey] = {
-        date: dateKey,
-        transactions: [],
-        totalCashSalesSSP: 0,
-        totalRepaymentsSSP: 0,
-        totalCashSalesUSD: 0,
-        totalRepaymentsUSD: 0,
-        totalDaySSP: 0,
-        totalDayUSD: 0
-      };
-    }
-    acc[dateKey].transactions.push(t);
-    
-    const isUSD = t.currency === 'USD';
-    const isConfirmed = t.isConfirmed;
-    
-    // Handle split amounts for mixed payments
-    const amountUSD = t.amountUSD !== undefined ? t.amountUSD : (isUSD ? t.amount : 0);
-    const amountSSP = t.amountSSP !== undefined ? t.amountSSP : (!isUSD ? t.amount : 0);
+      if (!acc[dateKey]) {
+        acc[dateKey] = {
+          date: dateKey,
+          transactions: [],
+          totalCashSalesSSP: 0,
+          totalRepaymentsSSP: 0,
+          totalCashSalesUSD: 0,
+          totalRepaymentsUSD: 0,
+          totalDaySSP: 0,
+          totalDayUSD: 0
+        };
+      }
+      acc[dateKey].transactions.push(t);
+      
+      const isUSD = t.currency === 'USD';
+      const isConfirmed = t.isConfirmed;
+      
+      // Handle split amounts for mixed payments
+      const amountUSD = t.amountUSD !== undefined ? t.amountUSD : (isUSD ? t.amount : 0);
+      const amountSSP = t.amountSSP !== undefined ? t.amountSSP : (!isUSD ? t.amount : 0);
 
-    if (t.type === 'Cash Sale' || t.type === 'Credit Paid') {
-      acc[dateKey].totalCashSalesUSD += amountUSD;
-      acc[dateKey].totalCashSalesSSP += amountSSP;
-    } else if (t.type === 'Repayment' || t.type === 'Cash In') {
-      acc[dateKey].totalRepaymentsUSD += amountUSD;
-      acc[dateKey].totalRepaymentsSSP += amountSSP;
-    }
-    
-    if (t.isCashIn) {
-      acc[dateKey].totalDayUSD += amountUSD;
-      acc[dateKey].totalDaySSP += amountSSP;
-    } else {
-      acc[dateKey].totalDayUSD -= amountUSD;
-      acc[dateKey].totalDaySSP -= amountSSP;
-    }
-    
-    if (!isConfirmed && (t.collection !== 'payments' || t.status === 'pending')) {
-      acc[dateKey].hasUnconfirmed = true;
-    }
-    
-    return acc;
-  }, {});
+      if (t.type === 'Cash Sale' || t.type === 'Credit Paid') {
+        acc[dateKey].totalCashSalesUSD += amountUSD;
+        acc[dateKey].totalCashSalesSSP += amountSSP;
+      } else if (t.type === 'Repayment' || t.type === 'Cash In') {
+        acc[dateKey].totalRepaymentsUSD += amountUSD;
+        acc[dateKey].totalRepaymentsSSP += amountSSP;
+      }
+      
+      if (t.isCashIn) {
+        acc[dateKey].totalDayUSD += amountUSD;
+        acc[dateKey].totalDaySSP += amountSSP;
+      } else {
+        acc[dateKey].totalDayUSD -= amountUSD;
+        acc[dateKey].totalDaySSP -= amountSSP;
+      }
+      
+      if (!isConfirmed && (t.collection !== 'payments' || t.status === 'pending')) {
+        acc[dateKey].hasUnconfirmed = true;
+      }
+      
+      return acc;
+    }, {});
 
-  const dailySummaries = Object.values(groupedByDate).sort((a: any, b: any) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+    return Object.values(groupedByDate).sort((a: any, b: any) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [filteredTransactions]);
 
   const months = [
     "January", "February", "March", "April", "May", "June",
@@ -523,18 +523,18 @@ export default function CashBook() {
   </div>;
 
   return (
-    <div className="space-y-6 pb-20 lg:pb-0">
+    <div className="space-y-6 pb-20 lg:pb-0 transition-colors duration-300">
       {/* Filters Section */}
-      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
+              <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
                 <button 
                   onClick={() => setViewMode('daily')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    viewMode === 'daily' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    viewMode === 'daily' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   Daily Summary
@@ -543,19 +543,19 @@ export default function CashBook() {
                   onClick={() => setViewMode('list')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    viewMode === 'list' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    viewMode === 'list' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   Transaction List
                 </button>
               </div>
-              <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block" />
-              <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
+              <div className="h-6 w-px bg-gray-200 dark:bg-gray-600 mx-2 hidden sm:block" />
+              <div className="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
                 <button 
                   onClick={() => setFilterType('all')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    filterType === 'all' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    filterType === 'all' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   All
@@ -564,7 +564,7 @@ export default function CashBook() {
                   onClick={() => setFilterType('date')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    filterType === 'date' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    filterType === 'date' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   Date
@@ -573,7 +573,7 @@ export default function CashBook() {
                   onClick={() => setFilterType('month')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    filterType === 'month' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    filterType === 'month' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   Month
@@ -582,7 +582,7 @@ export default function CashBook() {
                   onClick={() => setFilterType('range')}
                   className={cn(
                     "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap",
-                    filterType === 'range' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    filterType === 'range' ? "bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   )}
                 >
                   Range
@@ -590,21 +590,21 @@ export default function CashBook() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-3 bg-green-50 rounded-2xl border border-green-100 shadow-sm">
-              <div className="flex items-center gap-2 border-b sm:border-b-0 sm:border-r border-green-200 pb-2 sm:pb-0 sm:pr-4">
-                <DollarSign className="w-5 h-5 text-green-600" />
-                <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">Period Summary</span>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-900/30 shadow-sm">
+              <div className="flex items-center gap-2 border-b sm:border-b-0 sm:border-r border-green-200 dark:border-green-800 pb-2 sm:pb-0 sm:pr-4">
+                <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">Period Summary</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 pt-2 sm:pt-0 sm:pl-6">
                 <div>
-                  <p className="text-[8px] font-black text-green-500 uppercase tracking-widest mb-0.5">Total SSP (Payments)</p>
-                  <p className="text-sm sm:text-base lg:text-lg font-black text-green-700">
+                  <p className="text-[8px] font-black text-green-500 dark:text-green-400 uppercase tracking-widest mb-0.5">Total SSP (Payments)</p>
+                  <p className="text-sm sm:text-base lg:text-lg font-black text-green-700 dark:text-green-300">
                     {filteredTransactions.filter(t => t.currency === 'SSP').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US')} SSP
                   </p>
                 </div>
                 <div>
-                  <p className="text-[8px] font-black text-indigo-500 uppercase tracking-widest mb-0.5">Total USD (Payments)</p>
-                  <p className="text-sm sm:text-base lg:text-lg font-black text-indigo-700">
+                  <p className="text-[8px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-0.5">Total USD (Payments)</p>
+                  <p className="text-sm sm:text-base lg:text-lg font-black text-indigo-700 dark:text-indigo-300">
                     ${filteredTransactions.filter(t => t.currency === 'USD').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US')} USD
                   </p>
                 </div>
@@ -614,13 +614,13 @@ export default function CashBook() {
 
           <div className="flex flex-col sm:flex-row gap-3">
             {filterType !== 'all' && (
-              <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-100 dark:border-gray-600 animate-in fade-in slide-in-from-top-2 duration-200">
                 {filterType === 'date' && (
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <Calendar className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <input 
                       type="date" 
-                      className="flex-1 sm:flex-none px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 sm:flex-none px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
                     />
@@ -630,7 +630,7 @@ export default function CashBook() {
                 {filterType === 'month' && (
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <select 
-                      className="flex-1 sm:flex-none px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 sm:flex-none px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(e.target.value)}
                     >
@@ -639,7 +639,7 @@ export default function CashBook() {
                       ))}
                     </select>
                     <select 
-                      className="flex-1 sm:flex-none px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="flex-1 sm:flex-none px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(e.target.value)}
                     >
@@ -654,14 +654,14 @@ export default function CashBook() {
                   <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
                     <input 
                       type="date" 
-                      className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                     />
-                    <span className="text-gray-400 text-[10px] font-bold uppercase">to</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-[10px] font-bold uppercase">to</span>
                     <input 
                       type="date" 
-                      className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
                     />
@@ -671,11 +671,11 @@ export default function CashBook() {
             )}
 
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
               <input 
                 type="text" 
                 placeholder="Search customer or ID..."
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -687,31 +687,31 @@ export default function CashBook() {
       <div className="space-y-6">
         {viewMode === 'daily' ? (
           dailySummaries.map((summary: any) => (
-            <div key={summary.date} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <div className="bg-gray-50/80 px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div key={summary.date} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-gray-50/80 dark:bg-gray-700/50 px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-100 shrink-0">
+                  <div className="w-10 h-10 bg-white dark:bg-gray-800 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
                     <Calendar className="w-5 h-5 text-indigo-600" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-black text-gray-900 truncate">
+                    <h3 className="text-sm sm:text-base font-black text-gray-900 dark:text-white truncate">
                       {format(new Date(summary.date), 'EEEE, MMM dd, yyyy')}
                     </h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{summary.transactions.length} Transactions</p>
+                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{summary.transactions.length} Transactions</p>
                   </div>
                 </div>
-                <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0">
+                <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 dark:border-gray-700">
                   <div className="flex gap-2">
                     <button 
                       onClick={() => exportDailyToPDF(summary)}
-                      className="p-2.5 bg-white text-red-600 rounded-xl border border-gray-100 hover:bg-red-50 transition-all shadow-sm active:scale-95"
+                      className="p-2.5 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all shadow-sm active:scale-95"
                       title="Export PDF"
                     >
                       <FileText className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={() => exportDailyToExcel(summary)}
-                      className="p-2.5 bg-white text-green-600 rounded-xl border border-gray-100 hover:bg-green-50 transition-all shadow-sm active:scale-95"
+                      className="p-2.5 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all shadow-sm active:scale-95"
                       title="Export Excel"
                     >
                       <FileSpreadsheet className="w-4 h-4" />
@@ -722,7 +722,7 @@ export default function CashBook() {
                     disabled={!summary.hasUnconfirmed || isConfirming === summary.date}
                     className={cn(
                       "flex-1 sm:flex-none px-6 py-2.5 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
-                      summary.hasUnconfirmed ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100" : "bg-green-600 shadow-green-100"
+                      summary.hasUnconfirmed ? "bg-indigo-600 dark:bg-indigo-700 hover:bg-indigo-700 dark:hover:bg-indigo-600 shadow-indigo-100 dark:shadow-none" : "bg-green-600 dark:bg-green-700 shadow-green-100 dark:shadow-none"
                     )}
                   >
                     {isConfirming === summary.date ? 'Transferring...' : summary.hasUnconfirmed ? 'Transfer' : 'Transferred'}
@@ -733,40 +733,40 @@ export default function CashBook() {
               <div className="p-6">
                 {/* 2-Column Summary List */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-                  <div className="p-4 bg-green-50 rounded-2xl border border-green-100 shadow-sm">
-                    <p className="text-[9px] font-black text-green-600 uppercase tracking-widest mb-1">Payments of SSP</p>
-                    <p className="text-base font-black text-green-700">{(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US')} SSP</p>
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-900/30 shadow-sm">
+                    <p className="text-[9px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest mb-1">Payments of SSP</p>
+                    <p className="text-base font-black text-green-700 dark:text-green-300">{(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US')} SSP</p>
                   </div>
-                  <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm">
-                    <p className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-1">Payments (USD)</p>
-                    <p className="text-base font-black text-indigo-700">${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US')}</p>
+                  <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
+                    <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Payments (USD)</p>
+                    <p className="text-base font-black text-indigo-700 dark:text-indigo-300">${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US')}</p>
                   </div>
                 </div>
 
-                <div className="bg-gray-50/30 rounded-2xl border border-gray-100 overflow-hidden">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+                <div className="bg-gray-50/30 dark:bg-gray-900/20 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100 dark:divide-gray-700">
                     {/* SSP Transactions Section */}
                     <div className="p-4 space-y-4">
-                      <h4 className="text-[10px] font-black text-green-600 uppercase tracking-widest border-b border-green-100 pb-2 flex items-center justify-between">
+                      <h4 className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest border-b border-green-100 dark:border-green-900/30 pb-2 flex items-center justify-between">
                         <span>SSP Transactions</span>
                         <span className="font-black">{(summary.totalDaySSP).toLocaleString('en-US')} SSP</span>
                       </h4>
                       
                       <div className="space-y-2">
                         {summary.transactions.filter((t: any) => t.currency === 'SSP').map((t: any) => (
-                          <div key={t.id} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-gray-50 group hover:border-green-100 transition-all shadow-sm">
+                          <div key={t.id} className="flex items-center justify-between p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-50 dark:border-gray-700 group hover:border-green-100 dark:hover:border-green-800 transition-all shadow-sm">
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div className={cn(
                                 "w-6 h-6 rounded-lg flex items-center justify-center shrink-0",
-                                t.isCashIn ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
+                                t.isCashIn ? "bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400" : "bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400"
                               )}>
                                 {t.type === 'Cash Sale' ? <ShoppingCart className="w-3 h-3" /> : 
                                  t.type === 'Repayment' ? <User className="w-3 h-3" /> :
                                  t.type === 'Expense' ? <Receipt className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[11px] font-bold text-gray-900 truncate">{t.customerName}</p>
-                                <p className="text-[8px] text-gray-400 font-mono uppercase tracking-tighter">
+                                <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate">{t.customerName}</p>
+                                <p className="text-[8px] text-gray-400 dark:text-gray-500 font-mono uppercase tracking-tighter">
                                   #{t.id.split('_')[0].slice(-6).toUpperCase()}
                                   {t.isConfirmed && <span className="ml-1 text-green-500">✓</span>}
                                 </p>
@@ -774,55 +774,55 @@ export default function CashBook() {
                             </div>
                             
                             <div className="text-right shrink-0 ml-2">
-                              <span className={cn("text-[11px] font-black", t.isCashIn ? "text-green-600" : "text-red-600")}>
+                              <span className={cn("text-[11px] font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                                 {t.isCashIn ? '+' : '-'}{t.amount.toLocaleString('en-US')}
                               </span>
                             </div>
                           </div>
                         ))}
                         {summary.transactions.filter((t: any) => t.currency === 'SSP').length === 0 && (
-                          <p className="text-[10px] text-gray-400 text-center py-4 italic">No SSP transactions</p>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center py-4 italic">No SSP transactions</p>
                         )}
                       </div>
                     </div>
 
                     {/* USD Transactions Section */}
                     <div className="p-4 space-y-4">
-                      <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest border-b border-indigo-100 pb-2 flex items-center justify-between">
+                      <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest border-b border-indigo-100 dark:border-indigo-900/30 pb-2 flex items-center justify-between">
                         <span>USD Payments</span>
                         <span className="font-black">${(summary.totalDayUSD).toLocaleString('en-US')}</span>
                       </h4>
                       
                       <div className="space-y-2">
                         {summary.transactions.filter((t: any) => t.currency === 'USD').map((t: any) => (
-                          <div key={t.id} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-gray-50 group hover:border-indigo-100 transition-all shadow-sm">
+                          <div key={t.id} className="flex items-center justify-between p-2.5 bg-white dark:bg-gray-800 rounded-xl border border-gray-50 dark:border-gray-700 group hover:border-indigo-100 dark:hover:border-indigo-800 transition-all shadow-sm">
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div className={cn(
                                 "w-6 h-6 rounded-lg flex items-center justify-center shrink-0",
-                                t.isCashIn ? "bg-indigo-50 text-indigo-600" : "bg-red-50 text-red-600"
+                                t.isCashIn ? "bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400" : "bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400"
                               )}>
                                 {t.type === 'Cash Sale' ? <ShoppingCart className="w-3 h-3" /> : 
                                  t.type === 'Repayment' ? <User className="w-3 h-3" /> :
                                  t.type === 'Expense' ? <Receipt className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-[11px] font-bold text-gray-900 truncate">{t.customerName}</p>
-                                <p className="text-[8px] text-gray-400 font-mono uppercase tracking-tighter">
+                                <p className="text-[11px] font-bold text-gray-900 dark:text-white truncate">{t.customerName}</p>
+                                <p className="text-[8px] text-gray-400 dark:text-gray-500 font-mono uppercase tracking-tighter">
                                   #{t.id.split('_')[0].slice(-6).toUpperCase()}
-                                  {t.isConfirmed && <span className="ml-1 text-indigo-500">✓</span>}
+                                  {t.isConfirmed && <span className="ml-1 text-green-500">✓</span>}
                                 </p>
                               </div>
                             </div>
                             
                             <div className="text-right shrink-0 ml-2">
-                              <span className={cn("text-[11px] font-black", t.isCashIn ? "text-indigo-600" : "text-red-600")}>
+                              <span className={cn("text-[11px] font-black", t.isCashIn ? "text-indigo-600 dark:text-indigo-400" : "text-red-600 dark:text-red-400")}>
                                 {t.isCashIn ? '+' : '-'}${t.amount.toLocaleString('en-US')}
                               </span>
                             </div>
                           </div>
                         ))}
                         {summary.transactions.filter((t: any) => t.currency === 'USD').length === 0 && (
-                          <p className="text-[10px] text-gray-400 text-center py-4 italic">No USD transactions</p>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center py-4 italic">No USD transactions</p>
                         )}
                       </div>
                     </div>
@@ -832,39 +832,39 @@ export default function CashBook() {
             </div>
           ))
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
             <div className="hidden md:block overflow-x-auto scrollbar-hide">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100">
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">ID</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Amount</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Type</th>
+                  <tr className="bg-gray-50/50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Date</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">ID</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Customer</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Amount</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Type</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                   {filteredTransactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <tr key={t.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors group">
                       <td className="px-6 py-4 font-medium">
                         <div className="flex flex-col">
-                          <p className="text-sm font-bold text-gray-900">{format(new Date(t.timestamp), 'MMM dd, yyyy')}</p>
-                          <p className="text-[10px] text-gray-400">{format(new Date(t.timestamp), 'HH:mm')}</p>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{format(new Date(t.timestamp), 'MMM dd, yyyy')}</p>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500">{format(new Date(t.timestamp), 'HH:mm')}</p>
                         </div>
                       </td>
-                      <td className="px-6 py-4"><p className="text-[10px] font-mono text-gray-400 tracking-tighter">#{t.id.split('_')[0].slice(-6).toUpperCase()}</p></td>
-                      <td className="px-6 py-4"><p className="text-sm font-bold text-gray-900">{t.customerName}</p></td>
+                      <td className="px-6 py-4"><p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 tracking-tighter">#{t.id.split('_')[0].slice(-6).toUpperCase()}</p></td>
+                      <td className="px-6 py-4"><p className="text-sm font-bold text-gray-900 dark:text-white">{t.customerName}</p></td>
                       <td className="px-6 py-4 text-right">
-                        <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600" : "text-red-600")}>
+                        <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                           {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{t.amount.toLocaleString('en-US')}{t.currency === 'SSP' ? ' SSP' : ''}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className={cn(
                           "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter",
-                          t.type === 'Cash Sale' ? "bg-green-100 text-green-700" : 
-                          t.type === 'Repayment' ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                          t.type === 'Cash Sale' ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400" : 
+                          t.type === 'Repayment' ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400" : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
                         )}>
                           {t.type}
                         </span>
@@ -874,19 +874,19 @@ export default function CashBook() {
                 </tbody>
               </table>
             </div>
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
               {filteredTransactions.map((t) => (
                 <div key={t.id} className="p-4 space-y-2">
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="text-sm font-bold text-gray-900">{t.customerName}</p>
-                      <p className="text-[10px] text-gray-400 uppercase font-black">{t.type} • #{t.id.split('_')[0].slice(-6).toUpperCase()}</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{t.customerName}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black">{t.type} • #{t.id.split('_')[0].slice(-6).toUpperCase()}</p>
                     </div>
-                    <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600" : "text-red-600")}>
+                    <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
                       {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{t.amount.toLocaleString('en-US')}{t.currency === 'SSP' ? ' SSP' : ''}
                     </p>
                   </div>
-                  <div className="flex gap-4 text-[10px] text-gray-400 font-bold uppercase">
+                  <div className="flex gap-4 text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase">
                     <span>{format(new Date(t.timestamp), 'MMM dd')}</span>
                     <span>{format(new Date(t.timestamp), 'HH:mm')}</span>
                   </div>
@@ -896,12 +896,12 @@ export default function CashBook() {
           </div>
         )}
         {filteredTransactions.length === 0 && !loading && (
-          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
-            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100">
-              <DollarSign className="w-8 h-8 text-gray-300" />
+          <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-gray-600">
+              <DollarSign className="w-8 h-8 text-gray-300 dark:text-gray-500" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">No cash records found</h3>
-            <p className="text-gray-500">All paid transactions will appear here.</p>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">No cash records found</h3>
+            <p className="text-gray-500 dark:text-gray-400">All paid transactions will appear here.</p>
           </div>
         )}
       </div>

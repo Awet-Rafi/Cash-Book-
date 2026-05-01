@@ -41,7 +41,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserProfile = async (uid: string, userEmail?: string | null) => {
     try {
       // Check for cached businessId first to prevent UI flash
-      const cachedBId = localStorage.getItem(`last_bid_${uid}`);
+      let cachedBId = null;
+      try {
+        cachedBId = localStorage.getItem(`last_bid_${uid}`);
+      } catch (e) {}
+
       if (cachedBId && !businessId) {
         setBusinessId(cachedBId);
       }
@@ -79,7 +83,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (bId) {
         setBusinessId(bId);
-        localStorage.setItem(`last_bid_${uid}`, bId);
+        try {
+          localStorage.setItem(`last_bid_${uid}`, bId);
+        } catch (e) {}
+        
         let bDoc;
         try {
           bDoc = await getDoc(doc(db, 'businesses', bId));
@@ -91,13 +98,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setBusinessName(bDoc.data().name);
           setBusinessPin(bDoc.data().pin || null);
           
-          if (sessionStorage.getItem(`pin_unlocked_${bId}`) === 'true') {
-            setIsPinUnlocked(true);
-          }
+          try {
+            if (sessionStorage.getItem(`pin_unlocked_${bId}`) === 'true') {
+              setIsPinUnlocked(true);
+            }
+          } catch (e) {}
         }
       } else {
         setBusinessId(null);
-        localStorage.removeItem(`last_bid_${uid}`);
+        try {
+          localStorage.removeItem(`last_bid_${uid}`);
+        } catch (e) {}
         setBusinessName(null);
         setBusinessPin(null);
         setIsPinUnlocked(false);
@@ -111,10 +122,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Check for emergency skip flag
-    if (localStorage.getItem('force_skip_loading') === 'true') {
-      localStorage.removeItem('force_skip_loading');
-      setLoading(false);
-    }
+    try {
+      if (localStorage.getItem('force_skip_loading') === 'true') {
+        localStorage.removeItem('force_skip_loading');
+        setLoading(false);
+      }
+    } catch (e) {}
 
     // Safety timeout: If auth doesn't respond in 10 seconds, force loading to false
     const safetyTimeout = setTimeout(() => {
@@ -155,11 +168,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSetPinUnlocked = (unlocked: boolean) => {
     setIsPinUnlocked(unlocked);
     if (businessId) {
-      if (unlocked) {
-        sessionStorage.setItem(`pin_unlocked_${businessId}`, 'true');
-      } else {
-        sessionStorage.removeItem(`pin_unlocked_${businessId}`);
-      }
+      try {
+        if (unlocked) {
+          sessionStorage.setItem(`pin_unlocked_${businessId}`, 'true');
+        } else {
+          sessionStorage.removeItem(`pin_unlocked_${businessId}`);
+        }
+      } catch (e) {}
     }
   };
 

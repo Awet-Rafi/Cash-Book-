@@ -67,6 +67,8 @@ export interface Customer {
   createdAt: string;
   updatedAt?: string;
   memberIds?: string[];
+  initialBalance?: number;
+  initialBalanceCurrency?: Currency;
 }
 
 export interface Payment {
@@ -127,4 +129,20 @@ export interface Employee {
   salaryCurrency: Currency;
   hireDate: string;
   status: 'active' | 'inactive';
+}
+
+export interface StockMovement {
+  id: string;
+  businessId: string;
+  productId: string;
+  productName?: string;
+  type: 'sale' | 'restock' | 'adjustment' | 'edit_sale';
+  quantity: number;
+  timestamp: string;
+  notes?: string;
+  referenceId?: string;
+  customerName?: string;
+  paymentMethod?: 'cash' | 'credit';
+  amount?: number;
+  currency?: Currency;
 }

@@ -6,7 +6,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   updateProfile, 
-  sendPasswordResetEmail 
+  sendPasswordResetEmail,
+  sendEmailVerification 
 } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { 
@@ -35,6 +36,12 @@ const Login = () => {
     setError(null);
     setSuccess(null);
     setLoading(true);
+
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isSafari) {
+      console.warn("Safari detected. If login fails, disable 'Prevent Cross-Site Tracking' in Settings.");
+    }
+
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
@@ -103,6 +110,15 @@ const Login = () => {
         }
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName });
+        
+        // Send verification email
+        try {
+          await sendEmailVerification(userCredential.user);
+          setSuccess("Account created! A verification email has been sent. Please verify your email.");
+        } catch (verErr) {
+          console.error("Error sending verification email:", verErr);
+          setSuccess("Account created! (Note: We couldn't send a verification email right now).");
+        }
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -130,16 +146,16 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col-reverse lg:flex-row overflow-hidden">
+    <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col-reverse lg:flex-row overflow-hidden transition-colors duration-300">
       {/* Left Side: Branding & Value Prop (Bottom on mobile, Left on desktop) */}
-      <div className="lg:w-1/2 bg-indigo-600 p-8 lg:p-16 flex flex-col justify-between text-white relative overflow-hidden shrink-0">
-        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-3xl opacity-50" />
-        <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-96 h-96 bg-indigo-700 rounded-full blur-3xl opacity-50" />
+      <div className="lg:w-1/2 bg-indigo-600 dark:bg-indigo-900 p-8 lg:p-16 flex flex-col justify-between text-white relative overflow-hidden shrink-0">
+        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-96 h-96 bg-indigo-500 dark:bg-indigo-800 rounded-full blur-3xl opacity-50" />
+        <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-96 h-96 bg-indigo-700 dark:bg-indigo-950 rounded-full blur-3xl opacity-50" />
         
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl">
-              <Box className="w-7 h-7 text-indigo-600" />
+            <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center shadow-xl">
+              <Box className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
             </div>
             <span className="text-2xl font-black tracking-tighter uppercase">Mini ERP</span>
           </div>
@@ -147,10 +163,10 @@ const Login = () => {
           <div className="max-w-md">
             <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[0.9] tracking-tighter uppercase italic">
               Empower Your <br />
-              <span className="text-indigo-200">Business</span> <br />
+              <span className="text-indigo-200 dark:text-indigo-300">Business</span> <br />
               Growth
             </h1>
-            <p className="text-indigo-100 text-lg font-medium leading-relaxed mb-12">
+            <p className="text-indigo-100 dark:text-indigo-200 text-lg font-medium leading-relaxed mb-12">
               The all-in-one platform for modern store management. Track inventory, manage sales, and grow your business with data-driven insights.
             </p>
 
@@ -162,8 +178,8 @@ const Login = () => {
                 { icon: ShieldCheck, text: "Secure Multi-user Access" }
               ].map((feature, i) => (
                 <div key={i} className="flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-                    <feature.icon className="w-5 h-5 text-indigo-200" />
+                  <div className="w-10 h-10 rounded-xl bg-white/10 dark:bg-white/5 flex items-center justify-center group-hover:bg-white/20 dark:group-hover:bg-white/10 transition-colors">
+                    <feature.icon className="w-5 h-5 text-indigo-200 dark:text-indigo-400" />
                   </div>
                   <span className="font-bold text-sm uppercase tracking-widest">{feature.text}</span>
                 </div>
@@ -172,50 +188,50 @@ const Login = () => {
           </div>
         </div>
 
-        <div className="relative z-10 mt-12 pt-8 border-t border-indigo-500/50 flex items-center justify-between">
+        <div className="relative z-10 mt-12 pt-8 border-t border-indigo-500/50 dark:border-indigo-400/30 flex items-center justify-between">
           <div className="flex -space-x-3">
             {[1, 2, 3, 4].map(i => (
               <img 
                 key={i}
                 src={`https://i.pravatar.cc/100?img=${i + 10}`} 
                 alt="User" 
-                className="w-10 h-10 rounded-full border-2 border-indigo-600"
+                className="w-10 h-10 rounded-full border-2 border-indigo-600 dark:border-indigo-900"
               />
             ))}
-            <div className="w-10 h-10 rounded-full bg-indigo-500 border-2 border-indigo-600 flex items-center justify-center text-[10px] font-bold">
+            <div className="w-10 h-10 rounded-full bg-indigo-500 dark:bg-indigo-800 border-2 border-indigo-600 dark:border-indigo-900 flex items-center justify-center text-[10px] font-bold">
               +2k
             </div>
           </div>
-          <p className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Trusted by 2,000+ businesses</p>
+          <p className="text-xs font-bold text-indigo-200 dark:text-indigo-400 uppercase tracking-widest">Trusted by 2,000+ businesses</p>
         </div>
       </div>
 
       {/* Right Side: Auth Form */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-gray-50 overflow-y-auto">
+      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-gray-50 dark:bg-gray-950 overflow-y-auto transition-colors duration-300">
         <div className="max-w-md w-full py-8">
           <div className="mb-10">
-            <h2 className="text-4xl font-black text-gray-900 mb-2 uppercase tracking-tighter italic">
+            <h2 className="text-4xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tighter italic">
               {view === 'login' ? 'Welcome Back' : view === 'signup' ? 'Get Started' : 'Reset Password'}
             </h2>
-            <p className="text-gray-500 font-medium">
+            <p className="text-gray-500 dark:text-gray-400 font-medium">
               {view === 'login' 
-                ? 'Sign in to access your business dashboard.' 
+                ? 'Sign in to access your business dashboard. (Internet required for login)' 
                 : view === 'signup'
-                ? 'Create your account and start managing your business today.'
+                ? 'Create your account and start managing your business today. (Internet required for signup)'
                 : 'Enter your email to receive a password reset link.'}
             </p>
           </div>
 
-          <div className="bg-white p-8 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-700">
             {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm animate-in fade-in slide-in-from-top-2">
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400 text-sm animate-in fade-in slide-in-from-top-2">
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <p className="font-bold">{error}</p>
               </div>
             )}
 
             {success && (
-              <div className="mb-6 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 text-green-600 text-sm animate-in fade-in slide-in-from-top-2">
+              <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-900/50 rounded-2xl flex items-center gap-3 text-green-600 dark:text-green-400 text-sm animate-in fade-in slide-in-from-top-2">
                 <ShieldCheck className="w-5 h-5 shrink-0" />
                 <p className="font-bold">{success}</p>
               </div>
@@ -224,14 +240,14 @@ const Login = () => {
             {view === 'forgot-password' ? (
               <form onSubmit={handleForgotPassword} className="space-y-5">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Email Address</label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <input 
                       required
                       type="email"
                       placeholder="name@company.com"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                     />
@@ -241,7 +257,7 @@ const Login = () => {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center"
+                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center"
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -257,7 +273,7 @@ const Login = () => {
                     setError(null);
                     setSuccess(null);
                   }}
-                  className="w-full text-center text-xs font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors"
+                  className="w-full text-center text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                 >
                   Back to Login
                 </button>
@@ -266,14 +282,14 @@ const Login = () => {
               <form onSubmit={handleEmailAuth} className="space-y-5">
                 {view === 'signup' && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Name</label>
+                    <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Full Name</label>
                     <div className="relative">
-                      <UserIcon2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <UserIcon2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                       <input 
                         required
                         type="text"
                         placeholder="John Doe"
-                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                        className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
                         value={displayName}
                         onChange={e => setDisplayName(e.target.value)}
                       />
@@ -282,14 +298,14 @@ const Login = () => {
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email Address</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Email Address</label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <input 
                       required
                       type="email"
                       placeholder="name@company.com"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                     />
@@ -298,7 +314,7 @@ const Login = () => {
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between ml-1">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Password</label>
+                    <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Password</label>
                     {view === 'login' && (
                       <button 
                         type="button"
@@ -307,19 +323,19 @@ const Login = () => {
                           setError(null);
                           setSuccess(null);
                         }}
-                        className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors"
+                        className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                       >
                         Forgot?
                       </button>
                     )}
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <input 
                       required
                       type="password"
                       placeholder="••••••••"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                     />
@@ -329,7 +345,7 @@ const Login = () => {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center"
+                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center"
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -344,10 +360,10 @@ const Login = () => {
               <>
                 <div className="relative my-8">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-100"></div>
+                    <div className="w-full border-t border-gray-100 dark:border-gray-700"></div>
                   </div>
-                  <div className="relative flex justify-center text-[10px] uppercase tracking-[0.3em] font-black text-gray-300">
-                    <span className="bg-white px-4">Or continue with</span>
+                  <div className="relative flex justify-center text-[10px] uppercase tracking-[0.3em] font-black text-gray-300 dark:text-gray-600">
+                    <span className="bg-white dark:bg-gray-800 px-4">Or continue with</span>
                   </div>
                 </div>
 
@@ -355,7 +371,7 @@ const Login = () => {
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-4 py-4 px-6 bg-white border-2 border-gray-100 rounded-2xl font-black text-gray-700 hover:bg-gray-50 hover:border-indigo-200 transition-all duration-300 group shadow-sm disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-4 py-4 px-6 bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-2xl font-black text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-indigo-200 dark:hover:border-indigo-400 transition-all duration-300 group shadow-sm disabled:opacity-50"
                 >
                   <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6 group-hover:scale-110 transition-transform" />
                   <span className="uppercase tracking-widest text-xs">Google Account</span>
@@ -365,7 +381,7 @@ const Login = () => {
           </div>
 
           <div className="mt-8 text-center">
-            <p className="text-sm font-medium text-gray-500">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
               {view === 'login' ? "Don't have an account?" : view === 'signup' ? "Already have an account?" : ""}
               {view !== 'forgot-password' && (
                 <button 
@@ -375,7 +391,7 @@ const Login = () => {
                     setError(null);
                     setSuccess(null);
                   }}
-                  className="ml-2 text-indigo-600 font-black uppercase tracking-widest text-xs hover:text-indigo-700 transition-colors"
+                  className="ml-2 text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest text-xs hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                 >
                   {view === 'login' ? 'Sign Up' : 'Log In'}
                 </button>
@@ -383,9 +399,9 @@ const Login = () => {
             </p>
           </div>
 
-          <p className="mt-12 text-center text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em] leading-relaxed">
+          <p className="mt-12 text-center text-[10px] font-bold text-gray-300 dark:text-gray-600 uppercase tracking-[0.2em] leading-relaxed">
             By continuing, you agree to our <br />
-            <span className="text-gray-400">Terms of Service</span> & <span className="text-gray-400">Privacy Policy</span>
+            <span className="text-gray-400 dark:text-gray-500">Terms of Service</span> & <span className="text-gray-400 dark:text-gray-500">Privacy Policy</span>
           </p>
         </div>
       </div>

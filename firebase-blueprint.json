@@ -38,15 +38,24 @@
             }
           }
         },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
         "totalAmount": { "type": "number" },
         "totalCost": { "type": "number" },
         "profit": { "type": "number" },
         "timestamp": { "type": "string", "format": "date-time" },
         "customerName": { "type": "string" },
+        "customerId": { "type": "string" },
         "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
-        "status": { "type": "string", "enum": ["paid", "pending"] }
+        "status": { "type": "string", "enum": ["paid", "pending"] },
+        "currency": { "type": "string", "enum": ["USD", "SSP"] },
+        "exchangeRate": { "type": "number" },
+        "isConfirmed": { "type": "boolean" },
+        "amountUSD": { "type": "number" },
+        "amountSSP": { "type": "number" },
+        "isMixed": { "type": "boolean" }
       },
-      "required": ["items", "totalAmount", "totalCost", "profit", "timestamp", "paymentMethod", "businessId"]
+      "required": ["items", "totalAmount", "totalCost", "profit", "timestamp", "paymentMethod", "businessId", "currency", "status"]
     },
     "Expense": {
       "title": "Expense",
@@ -58,9 +67,15 @@
         "description": { "type": "string" },
         "amount": { "type": "number" },
         "category": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" },
+        "currency": { "type": "string", "enum": ["USD", "SSP"] },
+        "exchangeRate": { "type": "number" },
+        "amountUSD": { "type": "number" },
+        "amountSSP": { "type": "number" },
+        "isConfirmed": { "type": "boolean" },
+        "employeeId": { "type": "string" }
       },
-      "required": ["description", "amount", "timestamp", "businessId"]
+      "required": ["description", "amount", "timestamp", "businessId", "currency"]
     },
     "Customer": {
       "title": "Customer",
@@ -72,7 +87,11 @@
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "memberIds": { "type": "array", "items": { "type": "string" } },
+        "initialBalance": { "type": "number" },
+        "initialBalanceCurrency": { "type": "string", "enum": ["USD", "SSP"] }
       },
       "required": ["name", "businessId"]
     },
@@ -86,10 +105,20 @@
         "customerId": { "type": "string" },
         "customerName": { "type": "string" },
         "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["USD", "SSP"] },
+        "creditDeductionUSD": { "type": "number" },
+        "amountUSD": { "type": "number" },
+        "amountSSP": { "type": "number" },
+        "exchangeRate": { "type": "number" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "notes": { "type": "string" }
+        "notes": { "type": "string" },
+        "attachmentUrl": { "type": "string" },
+        "attachmentType": { "type": "string", "enum": ["image", "pdf"] },
+        "isConfirmed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "transferred"] },
+        "transferredAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["customerId", "customerName", "amount", "timestamp", "businessId"]
+      "required": ["customerId", "customerName", "amount", "timestamp", "businessId", "currency", "creditDeductionUSD"]
     },
     "CashTransaction": {
       "title": "CashTransaction",
@@ -102,7 +131,10 @@
         "amount": { "type": "number" },
         "currency": { "type": "string", "enum": ["USD", "SSP"] },
         "notes": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" },
+        "isConfirmed": { "type": "boolean" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" }
       },
       "required": ["type", "amount", "currency", "notes", "timestamp", "businessId"]
     },
@@ -115,7 +147,8 @@
         "name": { "type": "string" },
         "description": { "type": "string" },
         "ownerId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "logoUrl": { "type": "string" }
       },
       "required": ["name", "ownerId", "createdAt"]
     },
@@ -130,6 +163,43 @@
         "displayName": { "type": "string" }
       },
       "required": ["uid", "businessId"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee information and payroll.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "name": { "type": "string" },
+        "position": { "type": "string" },
+        "salary": { "type": "number" },
+        "salaryCurrency": { "type": "string", "enum": ["USD", "SSP"] },
+        "hireDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["name", "position", "salary", "salaryCurrency", "hireDate", "status", "businessId"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Log of stock ins and outs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "type": { "type": "string", "enum": ["sale", "restock", "adjustment", "edit_sale"] },
+        "quantity": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "credit"] },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["USD", "SSP"] }
+      },
+      "required": ["productId", "type", "quantity", "timestamp", "businessId"]
     }
   },
   "firestore": {
@@ -164,6 +234,14 @@
     "/userProfiles/{uid}": {
       "schema": "UserProfile",
       "description": "Collection of user profiles."
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Collection of business employees."
+    },
+    "/stockMovements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Collection of stock movement logs."
     }
   }
 }

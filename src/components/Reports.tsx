@@ -81,90 +81,100 @@ export default function Reports() {
     };
   }, [businessId]);
 
-  const yearStart = startOfYear(new Date(selectedYear, 0, 1));
-  const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
-  const monthStart = startOfMonth(new Date(selectedYear, selectedMonth, 1));
-  const monthEnd = endOfMonth(new Date(selectedYear, selectedMonth, 1));
+  const yearStart = React.useMemo(() => startOfYear(new Date(selectedYear, 0, 1)), [selectedYear]);
+  const yearEnd = React.useMemo(() => endOfYear(new Date(selectedYear, 0, 1)), [selectedYear]);
+  const monthStart = React.useMemo(() => startOfMonth(new Date(selectedYear, selectedMonth, 1)), [selectedYear, selectedMonth]);
+  const monthEnd = React.useMemo(() => endOfMonth(new Date(selectedYear, selectedMonth, 1)), [selectedYear, selectedMonth]);
 
-  const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
+  const yearlyData = React.useMemo(() => {
+    const months = eachMonthOfInterval({ start: yearStart, end: yearEnd });
+    return months.map(month => {
+      const mStart = startOfMonth(month);
+      const mEnd = endOfMonth(month);
 
-  const yearlyData = months.map(month => {
-    const mStart = startOfMonth(month);
-    const mEnd = endOfMonth(month);
+      const monthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: mStart, end: mEnd }));
+      const monthExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: mStart, end: mEnd }));
 
-    const monthSales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: mStart, end: mEnd }));
-    const monthExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: mStart, end: mEnd }));
+      const revenue = monthSales.reduce((acc, s) => {
+        const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
+        return acc + amountUSD;
+      }, 0);
+      const cost = monthSales.reduce((acc, s) => {
+        const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
+        return acc + costUSD;
+      }, 0);
+      const grossProfit = revenue - cost;
+      const expenseTotal = monthExpenses.reduce((acc, e) => {
+        const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+        return acc + amountUSD;
+      }, 0);
+      const netProfit = grossProfit - expenseTotal;
 
-    const revenue = monthSales.reduce((acc, s) => {
-      const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
-      return acc + amountUSD;
-    }, 0);
-    const cost = monthSales.reduce((acc, s) => {
-      const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
-      return acc + costUSD;
-    }, 0);
-    const grossProfit = revenue - cost;
-    const expenseTotal = monthExpenses.reduce((acc, e) => {
-      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
-      return acc + amountUSD;
-    }, 0);
-    const netProfit = grossProfit - expenseTotal;
+      return {
+        name: format(month, 'MMM'),
+        revenue,
+        expenses: expenseTotal,
+        profit: netProfit,
+      };
+    });
+  }, [sales, expenses, yearStart, yearEnd]);
 
-    return {
-      name: format(month, 'MMM'),
-      revenue,
-      expenses: expenseTotal,
-      profit: netProfit,
-    };
-  });
+  const monthlyDailyData = React.useMemo(() => {
+    const daysInMonth = Array.from({ length: monthEnd.getDate() }, (_, i) => i + 1);
+    return daysInMonth.map(day => {
+      const dStart = new Date(selectedYear, selectedMonth, day, 0, 0, 0);
+      const dEnd = new Date(selectedYear, selectedMonth, day, 23, 59, 59);
 
-  // Daily data for monthly view
-  const daysInMonth = Array.from({ length: monthEnd.getDate() }, (_, i) => i + 1);
-  const monthlyDailyData = daysInMonth.map(day => {
-    const dStart = new Date(selectedYear, selectedMonth, day, 0, 0, 0);
-    const dEnd = new Date(selectedYear, selectedMonth, day, 23, 59, 59);
+      const daySales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: dStart, end: dEnd }));
+      const dayExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: dStart, end: dEnd }));
 
-    const daySales = sales.filter(s => isWithinInterval(new Date(s.timestamp), { start: dStart, end: dEnd }));
-    const dayExpenses = expenses.filter(e => isWithinInterval(new Date(e.timestamp), { start: dStart, end: dEnd }));
+      const revenue = daySales.reduce((acc, s) => {
+        const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
+        return acc + amountUSD;
+      }, 0);
+      const cost = daySales.reduce((acc, s) => {
+        const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
+        return acc + costUSD;
+      }, 0);
+      const grossProfit = revenue - cost;
+      const expenseTotal = dayExpenses.reduce((acc, e) => {
+        const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+        return acc + amountUSD;
+      }, 0);
+      const netProfit = grossProfit - expenseTotal;
 
-    const revenue = daySales.reduce((acc, s) => {
-      const amountUSD = s.currency === 'SSP' ? s.totalAmount / (s.exchangeRate || 1000) : s.totalAmount;
-      return acc + amountUSD;
-    }, 0);
-    const cost = daySales.reduce((acc, s) => {
-      const costUSD = s.currency === 'SSP' ? s.totalCost / (s.exchangeRate || 1000) : s.totalCost;
-      return acc + costUSD;
-    }, 0);
-    const grossProfit = revenue - cost;
-    const expenseTotal = dayExpenses.reduce((acc, e) => {
-      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
-      return acc + amountUSD;
-    }, 0);
-    const netProfit = grossProfit - expenseTotal;
-
-    return {
-      name: day.toString(),
-      revenue,
-      expenses: expenseTotal,
-      profit: netProfit,
-    };
-  });
+      return {
+        name: day.toString(),
+        revenue,
+        expenses: expenseTotal,
+        profit: netProfit,
+      };
+    });
+  }, [sales, expenses, selectedYear, selectedMonth, monthEnd]);
 
   const currentData = viewType === 'yearly' ? yearlyData : monthlyDailyData;
   const currentIntervalStart = viewType === 'yearly' ? yearStart : monthStart;
   const currentIntervalEnd = viewType === 'yearly' ? yearEnd : monthEnd;
 
-  const totalRevenue = currentData.reduce((acc, d) => acc + d.revenue, 0);
-  const totalExpenses = currentData.reduce((acc, d) => acc + d.expenses, 0);
-  const totalProfit = currentData.reduce((acc, d) => acc + d.profit, 0);
+  const { totalRevenue, totalExpenses, totalProfit } = React.useMemo(() => {
+    return currentData.reduce((acc, d) => ({
+      totalRevenue: acc.totalRevenue + d.revenue,
+      totalExpenses: acc.totalExpenses + d.expenses,
+      totalProfit: acc.totalProfit + d.profit,
+    }), { totalRevenue: 0, totalExpenses: 0, totalProfit: 0 });
+  }, [currentData]);
 
-  const expenseByCategory = expenses
-    .filter(e => isWithinInterval(new Date(e.timestamp), { start: currentIntervalStart, end: currentIntervalEnd }))
-    .reduce((acc: any, e) => {
-      const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
-      acc[e.category] = (acc[e.category] || 0) + amountUSD;
-      return acc;
-    }, {});
+  const pieData = React.useMemo(() => {
+    const expenseByCategory = expenses
+      .filter(e => isWithinInterval(new Date(e.timestamp), { start: currentIntervalStart, end: currentIntervalEnd }))
+      .reduce((acc: any, e) => {
+        const amountUSD = e.currency === 'SSP' ? e.amount / (e.exchangeRate || 1000) : e.amount;
+        acc[e.category] = (acc[e.category] || 0) + amountUSD;
+        return acc;
+      }, {});
+    
+    return Object.entries(expenseByCategory).map(([name, value]) => ({ name, value: value as number }));
+  }, [expenses, currentIntervalStart, currentIntervalEnd]);
 
   const downloadPDF = () => {
     const doc = new jsPDF();
@@ -268,7 +278,6 @@ export default function Reports() {
     setIsDownloadMenuOpen(false);
   };
 
-  const pieData = Object.entries(expenseByCategory).map(([name, value]) => ({ name, value: value as number }));
   const COLORS = ['#4f46e5', '#ef4444', '#10b981', '#f59e0b', '#6366f1', '#ec4899'];
 
   if (loading) return <div className="animate-pulse space-y-8">
@@ -282,25 +291,25 @@ export default function Reports() {
   return (
     <div className="space-y-8">
       {/* Header & Filter */}
-      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+      <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4 w-full lg:w-auto">
-          <div className="p-3 bg-indigo-50 rounded-xl shrink-0">
-            <BarChart3 className="w-6 h-6 text-indigo-600" />
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl shrink-0">
+            <BarChart3 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-gray-900">Financial Performance</h3>
-            <p className="text-xs sm:text-sm text-gray-500">{viewType === 'yearly' ? 'Yearly overview' : 'Monthly breakdown'} and profit/loss</p>
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">Financial Performance</h3>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{viewType === 'yearly' ? 'Yearly overview' : 'Monthly breakdown'} and profit/loss</p>
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
           {/* View Toggle */}
-          <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
+          <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl w-full sm:w-auto">
             <button
               onClick={() => setViewType('yearly')}
               className={cn(
                 "flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
-                viewType === 'yearly' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                viewType === 'yearly' ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               )}
             >
               Yearly
@@ -309,14 +318,14 @@ export default function Reports() {
               onClick={() => setViewType('monthly')}
               className={cn(
                 "flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all",
-                viewType === 'monthly' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                viewType === 'monthly' ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               )}
             >
               Monthly
             </button>
           </div>
 
-          <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl border border-gray-100 w-full sm:w-auto justify-between sm:justify-start">
+          <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 p-1.5 rounded-xl border border-gray-100 dark:border-gray-700 w-full sm:w-auto justify-between sm:justify-start">
             <button 
               onClick={() => {
                 if (viewType === 'yearly') {
@@ -330,11 +339,11 @@ export default function Reports() {
                   }
                 }
               }}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"
+              className="p-2 hover:bg-white dark:hover:bg-gray-800 hover:shadow-sm rounded-lg transition-all"
             >
-              <ChevronLeft className="w-4 h-4 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </button>
-            <span className="px-2 sm:px-4 font-bold text-gray-900 text-sm">
+            <span className="px-2 sm:px-4 font-bold text-gray-900 dark:text-white text-sm">
               {viewType === 'yearly' ? selectedYear : format(new Date(selectedYear, selectedMonth), 'MMMM yyyy')}
             </span>
             <button 
@@ -350,9 +359,9 @@ export default function Reports() {
                   }
                 }
               }}
-              className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all"
+              className="p-2 hover:bg-white dark:hover:bg-gray-800 hover:shadow-sm rounded-lg transition-all"
             >
-              <ChevronRight className="w-4 h-4 text-gray-600" />
+              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </button>
           </div>
         </div>
@@ -360,31 +369,31 @@ export default function Reports() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Revenue</p>
-          <p className="text-xl sm:text-3xl font-black text-gray-900">{formatCurrency(totalRevenue)}</p>
-          <div className="mt-2 sm:mt-4 flex items-center gap-2 text-[10px] sm:text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full w-fit">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <p className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Total Revenue</p>
+          <p className="text-xl sm:text-3xl font-black text-gray-900 dark:text-white">{formatCurrency(totalRevenue)}</p>
+          <div className="mt-2 sm:mt-4 flex items-center gap-2 text-[10px] sm:text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded-full w-fit">
             <TrendingUp className="w-3 h-3" />
             Income
           </div>
         </div>
-        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Expenses</p>
-          <p className="text-xl sm:text-3xl font-black text-gray-900">{formatCurrency(totalExpenses)}</p>
-          <div className="mt-2 sm:mt-4 flex items-center gap-2 text-[10px] sm:text-xs font-bold text-red-600 bg-red-50 px-2 py-1 rounded-full w-fit">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <p className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Total Expenses</p>
+          <p className="text-xl sm:text-3xl font-black text-gray-900 dark:text-white">{formatCurrency(totalExpenses)}</p>
+          <div className="mt-2 sm:mt-4 flex items-center gap-2 text-[10px] sm:text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full w-fit">
             <TrendingDown className="w-3 h-3" />
             Outgoings
           </div>
         </div>
-        <div className="col-span-2 lg:col-span-1 bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Net Profit</p>
+        <div className="col-span-2 lg:col-span-1 bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <p className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Net Profit</p>
           <p className={cn(
             "text-xl sm:text-3xl font-black",
-            totalProfit >= 0 ? "text-green-600" : "text-red-600"
+            totalProfit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
           )}>{formatCurrency(totalProfit)}</p>
           <div className={cn(
             "mt-2 sm:mt-4 flex items-center gap-2 text-[10px] sm:text-xs font-bold px-2 py-1 rounded-full w-fit",
-            totalProfit >= 0 ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50"
+            totalProfit >= 0 ? "text-green-600 bg-green-50 dark:bg-green-900/30" : "text-red-600 bg-red-50 dark:bg-red-900/30"
           )}>
             <DollarSign className="w-3 h-3" />
             Final Balance
@@ -394,8 +403,8 @@ export default function Reports() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Monthly Performance Chart */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold text-gray-900 mb-8">{viewType === 'yearly' ? 'Monthly P&L' : 'Daily P&L'}</h3>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-8">{viewType === 'yearly' ? 'Monthly P&L' : 'Daily P&L'}</h3>
           <div className="h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={currentData}>
@@ -413,8 +422,9 @@ export default function Reports() {
                   tickFormatter={(value) => `$${value}`}
                 />
                 <Tooltip 
-                  cursor={{ fill: '#f9fafb' }}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  cursor={{ fill: 'currentColor', opacity: 0.05 }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'var(--tooltip-bg, #fff)', color: 'var(--tooltip-text, #000)' }}
+                  itemStyle={{ color: 'var(--tooltip-text, #000)' }}
                   formatter={(value: number) => [formatCurrency(value), '']}
                 />
                 <Legend iconType="circle" />
@@ -427,8 +437,8 @@ export default function Reports() {
         </div>
 
         {/* Expense Distribution */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-          <h3 className="text-lg font-bold text-gray-900 mb-8">Expense Distribution</h3>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-8">Expense Distribution</h3>
           <div className="h-[350px] w-full">
             {pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -447,7 +457,8 @@ export default function Reports() {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'var(--tooltip-bg, #fff)', color: 'var(--tooltip-text, #000)' }}
+                    itemStyle={{ color: 'var(--tooltip-text, #000)' }}
                     formatter={(value: number) => [formatCurrency(value), '']}
                   />
                   <Legend />
@@ -455,8 +466,8 @@ export default function Reports() {
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center">
-                <FileText className="w-12 h-12 text-gray-200 mb-2" />
-                <p className="text-gray-400 font-medium">No expense data for this year</p>
+                <FileText className="w-12 h-12 text-gray-200 dark:text-gray-700 mb-2" />
+                <p className="text-gray-400 dark:text-gray-500 font-medium">No expense data for this year</p>
               </div>
             )}
           </div>
@@ -464,14 +475,14 @@ export default function Reports() {
       </div>
 
       {/* Detailed Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between relative">
-          <h3 className="text-base sm:text-lg font-bold text-gray-900">{viewType === 'yearly' ? 'Monthly Breakdown' : 'Daily Breakdown'}</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between relative">
+          <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{viewType === 'yearly' ? 'Monthly Breakdown' : 'Daily Breakdown'}</h3>
           
           <div className="relative">
             <button 
               onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
-              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
+              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1.5 rounded-lg transition-all"
             >
               <Download className="w-4 h-4" />
               <span>Download Report</span>
@@ -484,17 +495,17 @@ export default function Reports() {
                   className="fixed inset-0 z-10" 
                   onClick={() => setIsDownloadMenuOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-20 animate-in fade-in zoom-in duration-200">
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-2 z-20 animate-in fade-in zoom-in duration-200">
                   <button
                     onClick={downloadPDF}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <FileIcon className="w-4 h-4 text-red-500" />
                     <span>Download PDF</span>
                   </button>
                   <button
                     onClick={downloadExcel}
-                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-green-600" />
                     <span>Download Excel</span>
@@ -509,33 +520,33 @@ export default function Reports() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50/50 border-b border-gray-100">
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">{viewType === 'yearly' ? 'Month' : 'Day'}</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Revenue</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Expenses</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Net Profit</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Margin</th>
+              <tr className="bg-gray-50/50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{viewType === 'yearly' ? 'Month' : 'Day'}</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Revenue</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expenses</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Net Profit</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Margin</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
               {currentData.slice().reverse().map((data, i) => {
                 const margin = data.revenue === 0 ? 0 : (data.profit / data.revenue) * 100;
                 return (
-                  <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                  <tr key={i} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-white">
                       {viewType === 'yearly' ? `${data.name} ${selectedYear}` : `${format(new Date(selectedYear, selectedMonth, parseInt(data.name)), 'MMM dd, yyyy')}`}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatCurrency(data.revenue)}</td>
-                    <td className="px-6 py-4 text-sm text-red-600">{formatCurrency(data.expenses)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{formatCurrency(data.revenue)}</td>
+                    <td className="px-6 py-4 text-sm text-red-600 dark:text-red-400">{formatCurrency(data.expenses)}</td>
                     <td className={cn(
                       "px-6 py-4 text-sm font-black",
-                      data.profit >= 0 ? "text-green-600" : "text-red-600"
+                      data.profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
                     )}>{formatCurrency(data.profit)}</td>
                     <td className="px-6 py-4">
                       <span className={cn(
                         "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                        margin >= 20 ? "bg-green-50 text-green-600" : 
-                        margin > 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"
+                        margin >= 20 ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" : 
+                        margin > 0 ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
                       )}>
                         {Math.round(margin)}% Margin
                       </span>
@@ -548,7 +559,7 @@ export default function Reports() {
         </div>
 
         {/* Mobile View */}
-        <div className="md:hidden divide-y divide-gray-100">
+        <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
           {currentData
             .slice()
             .reverse()
@@ -558,31 +569,31 @@ export default function Reports() {
               return (
                 <div key={i} className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-gray-900">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">
                       {viewType === 'yearly' ? `${data.name} ${selectedYear}` : `${format(new Date(selectedYear, selectedMonth, parseInt(data.name)), 'MMM dd')}`}
                     </p>
                     <span className={cn(
                       "px-2 py-0.5 rounded text-[8px] font-bold uppercase",
-                      margin >= 20 ? "bg-green-50 text-green-600" : 
-                      margin > 0 ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600"
+                      margin >= 20 ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" : 
+                      margin > 0 ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
                     )}>
                       {Math.round(margin)}% Margin
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Revenue</p>
-                      <p className="text-xs font-bold text-gray-900">{formatCurrency(data.revenue)}</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5">Revenue</p>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">{formatCurrency(data.revenue)}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Expenses</p>
-                      <p className="text-xs font-bold text-red-600">{formatCurrency(data.expenses)}</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5">Expenses</p>
+                      <p className="text-xs font-bold text-red-600 dark:text-red-400">{formatCurrency(data.expenses)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Net Profit</p>
+                      <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-0.5">Net Profit</p>
                       <p className={cn(
                         "text-xs font-black",
-                        data.profit >= 0 ? "text-green-600" : "text-red-600"
+                        data.profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
                       )}>{formatCurrency(data.profit)}</p>
                     </div>
                   </div>
@@ -591,7 +602,7 @@ export default function Reports() {
             })}
           {currentData.filter(d => d.revenue > 0 || d.expenses > 0).length === 0 && (
             <div className="p-8 text-center">
-              <p className="text-sm text-gray-400">No activity recorded for this {viewType === 'yearly' ? 'year' : 'month'}</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">No activity recorded for this {viewType === 'yearly' ? 'year' : 'month'}</p>
             </div>
           )}
         </div>

@@ -14,18 +14,18 @@ service cloud.firestore {
     }
 
     function isVerified() {
-      return isSignedIn();
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     // Role-based access using hardcoded emails
     function isAdmin() {
-      return isSignedIn() && 
+      return isVerified() && 
              (request.auth.token.email.lower() == 'tekle.taf@gmail.com' || 
               request.auth.token.email.lower() == 'awet16@gmail.com');
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128;
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -38,7 +38,7 @@ service cloud.firestore {
 
     // O(1) profile lookup (Cached)
     function getUserProfile() {
-      return isSignedIn() && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
+      return exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
         ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data
         : null;
     }
@@ -49,7 +49,9 @@ service cloud.firestore {
     }
 
     function isBusinessMember(businessId) {
-      return isSignedIn() && (isAdmin() || (getBusinessId() != null && getBusinessId() == businessId));
+      // Swapped order: Admin check first to prevent O(1) profile lookup if possible
+      // Actually, Admin check is more expensive than boolean but avoids profile lookup
+      return isVerified() && (isAdmin() || (getBusinessId() != null && getBusinessId() == businessId));
     }
 
     // ===============================================================
@@ -111,11 +113,11 @@ service cloud.firestore {
     }
 
     function isValidPayment(data) {
-      return data.keys().hasAll(['customerId', 'amount', 'timestamp', 'businessId', 'currency', 'creditDeductionUSD']) &&
-             data.businessId is string &&
-             data.customerId is string &&
+      return data.keys().hasAll(['customerId', 'customerName', 'amount', 'timestamp', 'businessId', 'currency', 'creditDeductionUSD']) &&
+             data.businessId is string && data.businessId.size() <= 128 &&
+             data.customerId is string && data.customerId.size() <= 128 &&
              data.amount is number &&
-             (data.timestamp is number || data.timestamp is timestamp) &&
+             data.timestamp == request.time &&
              data.currency in ['USD', 'SSP'] &&
              data.creditDeductionUSD is number;
     }
@@ -139,15 +141,6 @@ service cloud.firestore {
              data.status in ['active', 'inactive'];
     }
 
-    function isValidStockMovement(data) {
-      return data.keys().hasAll(['productId', 'type', 'quantity', 'timestamp', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.productId is string && data.productId.size() <= 128 &&
-             data.type in ['sale', 'restock', 'adjustment', 'edit_sale'] &&
-             data.quantity is number &&
-             data.timestamp == request.time;
-    }
-
     // ===============================================================
     // Rules
     // ===============================================================
@@ -163,6 +156,7 @@ service cloud.firestore {
 
     match /businesses/{businessId} {
       allow read: if isVerified() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      // Allow create for verified users
       allow create: if isVerified() && isValidBusiness(incoming()) && isValidId(businessId);
       allow update: if isVerified() && (resource.data.ownerId == request.auth.uid || isAdmin()) &&
                      isValidBusiness(incoming()) && 
@@ -231,12 +225,6 @@ service cloud.firestore {
                      isValidEmployee(incoming()) &&
                      incoming().businessId == existing().businessId;
       allow delete: if isVerified() && isBusinessMember(existing().businessId);
-    }
-
-    match /stockMovements/{movementId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidStockMovement(incoming()) && isBusinessMember(incoming().businessId);
-      allow update, delete: if isVerified() && isAdmin(); // Only admins can correct logs
     }
   }
 }

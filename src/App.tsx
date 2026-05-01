@@ -2,6 +2,7 @@ import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
@@ -11,9 +12,10 @@ import Expenses from './components/Expenses';
 import CreditBook from './components/CreditBook';
 import CustomerLedger from './components/CustomerLedger';
 import CashBook from './components/CashBook';
-import Customers from './components/Customers';
+import InvoiceManager from './components/InvoiceManager';
 import ReceiptBook from './components/ReceiptBook';
 import OrderBook from './components/OrderBook';
+import StoreBook from './components/StoreBook';
 
 // Auth & Layout components
 import Login from './components/auth/Login';
@@ -23,6 +25,15 @@ import Layout from './components/layout/Layout';
 import PinGate from './components/auth/PinGate';
 import AdminPanel from './components/AdminPanel';
 import Settings from './components/Settings';
+
+const ForceReset = () => {
+  React.useEffect(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.href = '/';
+  }, []);
+  return <div className="p-10 text-center">Resetting system...</div>;
+};
 
 // Error Boundary
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
@@ -96,10 +107,12 @@ const AppContent = () => {
         <Route path="/inventory" element={<PinGate><Inventory /></PinGate>} />
         <Route path="/order-book" element={<OrderBook />} />
         <Route path="/receipt-book" element={<ReceiptBook />} />
-        <Route path="/customers" element={<Customers />} />
+        <Route path="/invoices" element={<InvoiceManager />} />
+        <Route path="/store-book" element={<StoreBook />} />
         <Route path="/reports" element={<PinGate><Reports /></PinGate>} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/force-reset" element={<ForceReset />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
@@ -109,11 +122,13 @@ const AppContent = () => {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

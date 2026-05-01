@@ -247,12 +247,12 @@ export default function Expenses() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-2xl w-fit">
+      <div className="flex items-center gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-2xl w-fit">
         <button
           onClick={() => setActiveTab('expenses')}
           className={cn(
             "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
-            activeTab === 'expenses' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            activeTab === 'expenses' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
           )}
         >
           <Wallet className="w-4 h-4" />
@@ -262,7 +262,7 @@ export default function Expenses() {
           onClick={() => setActiveTab('employees')}
           className={cn(
             "px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2",
-            activeTab === 'employees' ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            activeTab === 'employees' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
           )}
         >
           <Users className="w-4 h-4" />
@@ -277,7 +277,7 @@ export default function Expenses() {
             <input 
               type="text" 
               placeholder={activeTab === 'expenses' ? "Search expenses..." : "Search employees..."}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -286,7 +286,7 @@ export default function Expenses() {
         {activeTab === 'expenses' ? (
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 dark:shadow-none"
           >
             <Plus className="w-5 h-5" />
             Record Expense
@@ -294,7 +294,7 @@ export default function Expenses() {
         ) : (
           <button 
             onClick={() => setIsEmployeeModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none"
           >
             <UserPlus className="w-5 h-5" />
             Add Employee
@@ -303,44 +303,44 @@ export default function Expenses() {
       </div>
 
       {successMessage && (
-        <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-green-600 text-sm font-bold animate-in fade-in slide-in-from-top-2">
+        <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-900/50 rounded-xl text-green-600 dark:text-green-400 text-sm font-bold animate-in fade-in slide-in-from-top-2">
           {successMessage}
         </div>
       )}
 
       {activeTab === 'expenses' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
             {/* Desktop View */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-gray-50/50 border-b border-gray-100">
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                  <tr className="bg-gray-50/50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700">
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                   {filteredExpenses.map((expense) => (
-                    <tr key={expense.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <tr key={expense.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors group">
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Calendar className="w-4 h-4 text-gray-400" />
                           {format(new Date(expense.timestamp), 'MMM dd, yyyy')}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm font-bold text-gray-900">{expense.description}</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{expense.description}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold">
+                        <span className="px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-xs font-bold">
                           {expense.category}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm font-black text-red-600">
+                      <td className="px-6 py-4 text-sm font-black text-red-600 dark:text-red-400">
                         {expense.currency === 'USD' ? '$' : ''}
                         {expense.amount.toLocaleString('en-US')}
                         {expense.currency === 'SSP' ? ' SSP' : ''}
@@ -358,14 +358,14 @@ export default function Expenses() {
                               setEditingId(expense.id);
                               setIsModalOpen(true);
                             }}
-                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           {isAdmin && (
                             <button 
                               onClick={() => setDeleteId(expense.id)}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -379,23 +379,23 @@ export default function Expenses() {
             </div>
 
             {/* Mobile View */}
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
               {filteredExpenses.map((expense) => (
                 <div key={expense.id} className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-gray-900 truncate">{expense.description}</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{expense.description}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-[10px] font-bold uppercase tracking-wider">
                           {expense.category}
                         </span>
-                        <span className="text-[10px] text-gray-400 font-medium">
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">
                           {format(new Date(expense.timestamp), 'MMM dd')}
                         </span>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-red-600">
+                      <p className="text-sm font-black text-red-600 dark:text-red-400">
                         {expense.currency === 'USD' ? '$' : ''}
                         {expense.amount.toLocaleString('en-US')}
                         {expense.currency === 'SSP' ? ' SSP' : ''}
@@ -412,14 +412,14 @@ export default function Expenses() {
                             setEditingId(expense.id);
                             setIsModalOpen(true);
                           }}
-                          className="p-2 text-gray-400 hover:text-indigo-600 bg-indigo-50 rounded-lg transition-colors"
+                          className="p-2 text-gray-400 hover:text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg transition-colors"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         {isAdmin && (
                           <button 
                             onClick={() => setDeleteId(expense.id)}
-                            className="p-2 text-gray-400 hover:text-red-600 bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 hover:text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -432,42 +432,42 @@ export default function Expenses() {
             </div>
             {filteredExpenses.length === 0 && !loading && (
               <div className="text-center py-20">
-                <Wallet className="w-12 h-12 text-gray-200 mx-auto mb-2" />
+                <Wallet className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-2" />
                 <p className="text-sm text-gray-400 font-medium">No expenses recorded</p>
               </div>
             )}
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Summary</h3>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Summary</h3>
               <div className="space-y-4">
-                <div className="p-4 bg-red-50 rounded-xl border border-red-100 space-y-2">
+                <div className="p-4 bg-red-50 dark:bg-red-900/10 rounded-xl border border-red-100 dark:border-red-900/30 space-y-2">
                   <div>
-                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mb-1">Total USD Expenses</p>
-                    <p className="text-2xl font-black text-red-700">
+                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Total USD Expenses</p>
+                    <p className="text-2xl font-black text-red-700 dark:text-red-400">
                       ${filteredExpenses.filter(e => e.currency === 'USD').reduce((acc, e) => acc + e.amount, 0).toLocaleString('en-US')}
                     </p>
                   </div>
-                  <div className="pt-2 border-t border-red-100">
-                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mb-1">Total SSP Expenses</p>
-                    <p className="text-2xl font-black text-red-700">
+                  <div className="pt-2 border-t border-red-100 dark:border-red-900/30">
+                    <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Total SSP Expenses</p>
+                    <p className="text-2xl font-black text-red-700 dark:text-red-400">
                       {filteredExpenses.filter(e => e.currency === 'SSP').reduce((acc, e) => acc + e.amount, 0).toLocaleString('en-US')} SSP
                     </p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">By Category</p>
+                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">By Category</p>
                   {Array.from(new Set(expenses.map(e => e.category))).map(cat => {
                     const catTotal = expenses.filter(e => e.category === cat).reduce((acc, e) => acc + e.amount, 0);
                     const percentage = (catTotal / (totalExpenses || 1)) * 100;
                     return (
                       <div key={cat} className="space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="font-medium text-gray-700">{cat}</span>
-                          <span className="font-bold text-gray-900">{formatCurrency(catTotal)}</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{cat}</span>
+                          <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(catTotal)}</span>
                         </div>
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                           <div className="h-full bg-red-500 rounded-full" style={{ width: `${percentage}%` }} />
                         </div>
                       </div>
@@ -482,7 +482,7 @@ export default function Expenses() {
         <div className="space-y-6">
           {/* Salary Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 rounded-2xl shadow-lg shadow-indigo-100 text-white">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-none text-white">
               <p className="text-[10px] font-bold text-indigo-100 uppercase tracking-widest mb-1">Monthly USD Payroll</p>
               <p className="text-lg font-black">
                 ${employees.filter(e => e.salaryCurrency === 'USD' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0).toLocaleString('en-US')}
@@ -492,7 +492,7 @@ export default function Expenses() {
                 {employees.filter(e => e.salaryCurrency === 'USD' && e.status === 'active').length} Active Staff
               </div>
             </div>
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 rounded-2xl shadow-lg shadow-emerald-100 text-white">
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 rounded-2xl shadow-lg shadow-emerald-100 dark:shadow-none text-white">
               <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest mb-1">Monthly SSP Payroll</p>
               <p className="text-lg font-black">
                 {employees.filter(e => e.salaryCurrency === 'SSP' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0).toLocaleString('en-US')} SSP
@@ -504,38 +504,38 @@ export default function Expenses() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
           {/* Desktop View */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Employee</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Position</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Monthly Salary</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                <tr className="bg-gray-50/50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700">
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Employee</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Position</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Monthly Salary</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                 {employees.filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase())).map((employee) => (
-                  <tr key={employee.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <tr key={employee.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
-                          <Users className="w-4 h-4 text-indigo-600" />
+                        <div className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center">
+                          <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                         </div>
-                        <p className="text-sm font-bold text-gray-900">{employee.name}</p>
+                        <p className="text-sm font-bold text-gray-900 dark:text-white">{employee.name}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <Briefcase className="w-4 h-4 text-gray-400" />
                         {employee.position}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-black text-indigo-600">
+                      <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                         {employee.salaryCurrency === 'USD' ? '$' : ''}
                         {employee.salary.toLocaleString('en-US')}
                         {employee.salaryCurrency === 'SSP' ? ' SSP' : ''}
@@ -544,7 +544,7 @@ export default function Expenses() {
                     <td className="px-6 py-4">
                       <span className={cn(
                         "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        employee.status === 'active' ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-500"
+                        employee.status === 'active' ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                       )}>
                         {employee.status}
                       </span>
@@ -557,7 +557,7 @@ export default function Expenses() {
                           className={cn(
                             "px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5",
                             (employee.status === 'inactive' || isEmployeePaidThisMonth(employee.id))
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              ? "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
                               : "bg-indigo-600 text-white hover:bg-indigo-700"
                           )}
                         >
@@ -566,7 +566,7 @@ export default function Expenses() {
                         </button>
                         <button 
                           onClick={() => viewEmployeePayments(employee)}
-                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
                           title="Payment History"
                         >
                           <Calendar className="w-4 h-4" />
@@ -584,14 +584,14 @@ export default function Expenses() {
                             setEditingEmployeeId(employee.id);
                             setIsEmployeeModalOpen(true);
                           }}
-                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         {isAdmin && (
                           <button 
                             onClick={() => setDeleteEmployeeId(employee.id)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -605,30 +605,30 @@ export default function Expenses() {
           </div>
 
           {/* Mobile View */}
-          <div className="md:hidden divide-y divide-gray-100">
+          <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
             {employees.filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase())).map((employee) => (
               <div key={employee.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-                      <Users className="w-5 h-5 text-indigo-600" />
+                    <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
+                      <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-900">{employee.name}</p>
-                      <p className="text-[10px] text-gray-500 font-medium">{employee.position}</p>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{employee.name}</p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{employee.position}</p>
                     </div>
                   </div>
                   <span className={cn(
                     "px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider",
-                    employee.status === 'active' ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-500"
+                    employee.status === 'active' ? "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                   )}>
                     {employee.status}
                   </span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
                   <div>
-                    <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Salary</p>
-                    <p className="text-sm font-black text-indigo-600">
+                    <p className="text-[8px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-0.5">Salary</p>
+                    <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                       {employee.salaryCurrency === 'USD' ? '$' : ''}
                       {employee.salary.toLocaleString('en-US')}
                     </p>
@@ -640,7 +640,7 @@ export default function Expenses() {
                       className={cn(
                         "px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all",
                         (employee.status === 'inactive' || isEmployeePaidThisMonth(employee.id))
-                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
                           : "bg-indigo-600 text-white"
                       )}
                     >
@@ -648,7 +648,7 @@ export default function Expenses() {
                     </button>
                     <button 
                       onClick={() => viewEmployeePayments(employee)}
-                      className="p-2 text-gray-400 bg-white border border-gray-100 rounded-lg"
+                      className="p-2 text-gray-400 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg"
                     >
                       <Calendar className="w-3.5 h-3.5" />
                     </button>
@@ -665,14 +665,14 @@ export default function Expenses() {
                         setEditingEmployeeId(employee.id);
                         setIsEmployeeModalOpen(true);
                       }}
-                      className="p-2 text-gray-400 bg-white border border-gray-100 rounded-lg"
+                      className="p-2 text-gray-400 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     {isAdmin && (
                       <button 
                         onClick={() => setDeleteEmployeeId(employee.id)}
-                        className="p-2 text-red-400 bg-white border border-gray-100 rounded-lg"
+                        className="p-2 text-red-400 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -685,11 +685,11 @@ export default function Expenses() {
 
           {employees.length === 0 && (
             <div className="text-center py-20">
-              <Users className="w-12 h-12 text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-400 font-medium">No employees added yet</p>
+              <Users className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-2" />
+              <p className="text-sm text-gray-400 dark:text-gray-500 font-medium">No employees added yet</p>
               <button 
                 onClick={() => setIsEmployeeModalOpen(true)}
-                className="mt-4 text-indigo-600 font-bold text-sm hover:underline"
+                className="mt-4 text-indigo-600 dark:text-indigo-400 font-bold text-sm hover:underline"
               >
                 Add your first employee
               </button>
@@ -702,31 +702,31 @@ export default function Expenses() {
       {/* Employee Modal */}
       {isEmployeeModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="text-lg font-bold text-gray-900">{editingEmployeeId ? 'Edit Employee' : 'Add New Employee'}</h3>
-              <button onClick={() => { setIsEmployeeModalOpen(false); setEditingEmployeeId(null); }} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                <X className="w-5 h-5 text-gray-500" />
+          <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{editingEmployeeId ? 'Edit Employee' : 'Add New Employee'}</h3>
+              <button onClick={() => { setIsEmployeeModalOpen(false); setEditingEmployeeId(null); }} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
             <form onSubmit={handleEmployeeSubmit} className="p-6 space-y-4" autoComplete="off">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Full Name</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Full Name</label>
                 <input 
                   required
                   type="text" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                   value={employeeFormData.name}
                   onChange={e => setEmployeeFormData({...employeeFormData, name: e.target.value})}
                   placeholder="e.g. John Doe"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Position</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Position</label>
                 <input 
                   required
                   type="text" 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                   value={employeeFormData.position}
                   onChange={e => setEmployeeFormData({...employeeFormData, position: e.target.value})}
                   placeholder="e.g. Sales Manager"
@@ -734,19 +734,19 @@ export default function Expenses() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Salary Amount</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Salary Amount</label>
                   <input 
                     required
                     type="number" 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                     value={employeeFormData.salary}
                     onChange={e => setEmployeeFormData({...employeeFormData, salary: e.target.value})}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Currency</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Currency</label>
                   <select 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                     value={employeeFormData.salaryCurrency}
                     onChange={e => setEmployeeFormData({...employeeFormData, salaryCurrency: e.target.value as 'USD' | 'SSP'})}
                   >
@@ -757,19 +757,19 @@ export default function Expenses() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Hire Date</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Hire Date</label>
                   <input 
                     required
                     type="date" 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                     value={employeeFormData.hireDate}
                     onChange={e => setEmployeeFormData({...employeeFormData, hireDate: e.target.value})}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</label>
                   <select 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                     value={employeeFormData.status}
                     onChange={e => setEmployeeFormData({...employeeFormData, status: e.target.value as 'active' | 'inactive'})}
                   >
@@ -782,13 +782,13 @@ export default function Expenses() {
                 <button 
                   type="button"
                   onClick={() => { setIsEmployeeModalOpen(false); setEditingEmployeeId(null); }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                  className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none"
                 >
                   {editingEmployeeId ? 'Update Employee' : 'Add Employee'}
                 </button>
@@ -801,26 +801,26 @@ export default function Expenses() {
       {/* Delete Confirmation Modal */}
       {(deleteId || deleteEmployeeId) && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6 text-red-600" />
+          <div className="bg-white dark:bg-gray-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 text-center mb-2">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white text-center mb-2">
               {deleteId ? 'Delete Expense?' : 'Remove Employee?'}
             </h3>
-            <p className="text-sm text-gray-500 text-center mb-6">
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
               This action cannot be undone. Are you sure you want to delete this record?
             </p>
             <div className="flex gap-3">
               <button 
                 onClick={() => { setDeleteId(null); setDeleteEmployeeId(null); }}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
               >
                 Cancel
               </button>
               <button 
                 onClick={deleteId ? handleDelete : handleDeleteEmployee}
-                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 dark:shadow-none"
               >
                 Delete
               </button>
@@ -832,28 +832,28 @@ export default function Expenses() {
       {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="text-lg font-bold text-gray-900">{editingId ? 'Edit Expense' : 'Record New Expense'}</h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingId(null); }} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                <X className="w-5 h-5 text-gray-500" />
+          <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{editingId ? 'Edit Expense' : 'Record New Expense'}</h3>
+              <button onClick={() => { setIsModalOpen(false); setEditingId(null); }} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors">
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4" autoComplete="off">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Description</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</label>
                 <input 
                   required
                   type="text" 
                   autoComplete="off"
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
                   placeholder="e.g. Electricity Bill, Rent, Supplies"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Currency</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Currency</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -861,8 +861,8 @@ export default function Expenses() {
                     className={cn(
                       "py-2 rounded-xl text-xs font-bold transition-all border",
                       formData.currency === 'USD' 
-                        ? "bg-red-600 border-red-600 text-white shadow-lg shadow-red-100" 
-                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                        ? "bg-red-600 border-red-600 text-white shadow-lg shadow-red-100 dark:shadow-none" 
+                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                     )}
                   >
                     USD
@@ -873,8 +873,8 @@ export default function Expenses() {
                     className={cn(
                       "py-2 rounded-xl text-xs font-bold transition-all border",
                       formData.currency === 'SSP' 
-                        ? "bg-red-600 border-red-600 text-white shadow-lg shadow-red-100" 
-                        : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                        ? "bg-red-600 border-red-600 text-white shadow-lg shadow-red-100 dark:shadow-none" 
+                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                     )}
                   >
                     SSP
@@ -882,25 +882,25 @@ export default function Expenses() {
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</label>
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 font-bold text-xs">
                     {formData.currency === 'USD' ? '$' : 'SSP'}
                   </div>
                   <input 
                     required
                     type="number" 
                     step="0.01"
-                    className="w-full pl-12 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    className="w-full pl-12 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                     value={formData.amount}
                     onChange={e => setFormData({...formData, amount: e.target.value})}
                   />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Category</label>
+                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Category</label>
                 <select 
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white"
                   value={formData.category}
                   onChange={e => setFormData({...formData, category: e.target.value})}
                 >
@@ -917,13 +917,13 @@ export default function Expenses() {
                 <button 
                   type="button"
                   onClick={() => { setIsModalOpen(false); setEditingId(null); }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                  className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 dark:shadow-none"
                 >
                   {editingId ? 'Update Expense' : 'Save Expense'}
                 </button>

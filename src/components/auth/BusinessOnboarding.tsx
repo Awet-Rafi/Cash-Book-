@@ -3,7 +3,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Box, AlertCircle, TrendingUp, Lock } from 'lucide-react';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 
 const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
   const { user } = useAuth();
@@ -37,21 +37,14 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
     setError(null);
 
     try {
-      const businessId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const businessId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
       const now = new Date().toISOString();
 
       console.log("Starting onboarding for user:", user.uid);
 
-      // Hash the PIN asynchronously to avoid blocking UI
-      const hashedPin = await new Promise<string>((resolve, reject) => {
-        bcrypt.genSalt(10, (err, salt) => {
-          if (err) reject(err);
-          bcrypt.hash(pin, salt, (err, hash) => {
-            if (err) reject(err);
-            resolve(hash);
-          });
-        });
-      });
+      // Simple sync hash for PIN to avoid potential generator/callback hanging issues
+      const salt = bcrypt.genSaltSync(10);
+      const hashedPin = bcrypt.hashSync(pin, salt);
 
       // 1. Create Business
       console.log("Creating business document...");
@@ -94,25 +87,25 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-xl w-full grid lg:grid-cols-2 bg-white rounded-3xl shadow-2xl overflow-hidden">
-        <div className="p-8 lg:p-12 bg-indigo-600 text-white flex flex-col justify-between">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4 transition-colors duration-300">
+      <div className="max-w-xl w-full grid lg:grid-cols-2 bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700">
+        <div className="p-8 lg:p-12 bg-indigo-600 dark:bg-indigo-900 text-white flex flex-col justify-between">
           <div>
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-8">
-              <Box className="w-7 h-7 text-white" />
+            <div className="w-12 h-12 bg-white/20 dark:bg-white/5 rounded-2xl flex items-center justify-center mb-8">
+              <Box className="w-7 h-7 text-white dark:text-indigo-400" />
             </div>
             <h1 className="text-3xl font-black mb-4 leading-tight uppercase tracking-tighter">Build Your Business Portfolio</h1>
-            <p className="text-indigo-100 text-sm leading-relaxed">
+            <p className="text-indigo-100 dark:text-indigo-200 text-sm leading-relaxed">
               Welcome! Let's set up your business workspace. This will be the home for your inventory, sales, and financial reports.
             </p>
           </div>
           <div className="mt-12 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">01</div>
+              <div className="w-8 h-8 rounded-full bg-white/10 dark:bg-white/5 flex items-center justify-center text-xs font-bold">01</div>
               <p className="text-xs font-bold uppercase tracking-widest">Create Profile</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">02</div>
+              <div className="w-8 h-8 rounded-full bg-white/10 dark:bg-white/5 flex items-center justify-center text-xs font-bold">02</div>
               <p className="text-xs font-bold uppercase tracking-widest text-white">Security PIN</p>
             </div>
           </div>
@@ -120,54 +113,54 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
         <div className="p-8 lg:p-12 overflow-y-auto max-h-[90vh]">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Business Name</label>
+              <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Business Name</label>
               <input 
                 type="text"
                 required
                 placeholder="e.g. Tekle's General Store"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold dark:text-white dark:placeholder-gray-600"
                 value={businessName}
                 onChange={e => setBusinessName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Description (Optional)</label>
+              <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Description (Optional)</label>
               <textarea 
                 placeholder="What do you sell?"
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium h-20 resize-none"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium h-20 resize-none dark:text-white dark:placeholder-gray-600"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
               />
             </div>
 
-            <div className="pt-4 border-t border-gray-100">
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-2 mb-4">
-                <Lock className="w-4 h-4 text-indigo-600" />
-                <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">Security PIN</h3>
+                <Lock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">Security PIN</h3>
               </div>
-              <p className="text-[10px] text-gray-500 mb-4 font-medium">This PIN will be required to access Inventory and Reports.</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4 font-medium">This PIN will be required to access Inventory and Reports.</p>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Set PIN</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Set PIN</label>
                   <input 
                     type="password"
                     required
                     maxLength={6}
                     placeholder="••••"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                     value={pin}
                     onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Confirm PIN</label>
+                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em]">Confirm PIN</label>
                   <input 
                     type="password"
                     required
                     maxLength={6}
                     placeholder="••••"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em]"
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-center tracking-[0.5em] dark:text-white dark:placeholder-gray-600"
                     value={confirmPin}
                     onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
                   />
@@ -176,7 +169,7 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-xs font-bold">
+              <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400 text-xs font-bold">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <p>{error}</p>
               </div>
@@ -185,7 +178,7 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
             <button 
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

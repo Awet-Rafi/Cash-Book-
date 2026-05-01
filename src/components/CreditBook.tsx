@@ -85,7 +85,7 @@ export default function CreditBook() {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-500 font-medium animate-pulse">Loading Credit Records...</p>
+        <p className="text-gray-500 font-medium animate-pulse">Loading Credit Sales...</p>
       </div>
     );
   }
@@ -95,17 +95,17 @@ export default function CreditBook() {
       {/* Header & Stats */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Credit Book</h1>
-          <p className="text-sm text-gray-500">Daily log of all credit sales and item details</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Credit Sales</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Daily log of all credit sales and item details</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-amber-600" />
+          <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Credit Sales</p>
-              <p className="text-lg font-black text-gray-900">{sales.length}</p>
+              <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Total Credit Sales</p>
+              <p className="text-lg font-black text-gray-900 dark:text-white">{sales.length}</p>
             </div>
           </div>
         </div>
@@ -120,7 +120,7 @@ export default function CreditBook() {
             placeholder="Search by customer name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm dark:text-white dark:placeholder-gray-500"
           />
         </div>
         <div className="relative group">
@@ -129,7 +129,7 @@ export default function CreditBook() {
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm dark:text-white"
           />
         </div>
       </div>
@@ -137,25 +137,25 @@ export default function CreditBook() {
       {/* Sales List */}
       <div className="space-y-8">
         {groupedSales.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Filter className="w-8 h-8 text-gray-300" />
+          <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Filter className="w-8 h-8 text-gray-300 dark:text-gray-600" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">No credit sales found</h3>
-            <p className="text-gray-500 max-w-xs mx-auto mt-1">Try adjusting your search or filters to find what you're looking for.</p>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">No credit sales found</h3>
+            <p className="text-gray-500 dark:text-gray-400 max-w-xs mx-auto mt-1">Try adjusting your search or filters to find what you're looking for.</p>
           </div>
         ) : (
           groupedSales.map(([date, daySales]) => (
             <div key={date} className="space-y-4">
               <div className="flex items-center gap-3 px-2">
-                <div className="h-px flex-1 bg-gray-200" />
-                <div className="flex items-center gap-2 bg-gray-100 px-4 py-1.5 rounded-full border border-gray-200">
-                  <Calendar className="w-4 h-4 text-gray-500" />
-                  <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">
+                  <Calendar className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">
                     {format(parseISO(date), 'EEEE, MMMM do, yyyy')}
                   </span>
                 </div>
-                <div className="h-px flex-1 bg-gray-200" />
+                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
               </div>
 
               <div className="grid gap-3">
@@ -164,8 +164,8 @@ export default function CreditBook() {
                     layout
                     key={sale.id}
                     className={cn(
-                      "bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200",
-                      expandedSales.has(sale.id) ? "ring-2 ring-indigo-500/10 border-indigo-200" : "hover:border-gray-300"
+                      "bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden transition-all duration-200",
+                      expandedSales.has(sale.id) ? "ring-2 ring-indigo-500/10 border-indigo-200 dark:border-indigo-900/50" : "hover:border-gray-300 dark:hover:border-gray-600"
                     )}
                   >
                     <div 
@@ -173,17 +173,17 @@ export default function CreditBook() {
                       onClick={() => toggleSale(sale.id)}
                     >
                       <div className="flex items-center gap-4 min-w-0 flex-1">
-                        <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-indigo-600" />
+                        <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center shrink-0">
+                          <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 truncate">{sale.customerName || 'Guest'}</h3>
-                            <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100">
+                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{sale.customerName || 'Guest'}</h3>
+                            <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-900/50">
                               Credit
                             </span>
                           </div>
-                          <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                          <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                             <div className="flex items-center gap-1">
                               <Clock className="w-3.5 h-3.5" />
                               {format(parseISO(sale.timestamp), 'hh:mm a')}
@@ -199,13 +199,13 @@ export default function CreditBook() {
                       <div className="flex items-center gap-6">
                         <div className="text-right">
                           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Amount</p>
-                          <p className="text-lg font-black text-indigo-600">
+                          <p className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                             {formatCurrency(sale.totalAmount, sale.currency)}
                           </p>
                         </div>
                         <div className={cn(
                           "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
-                          expandedSales.has(sale.id) ? "bg-indigo-50 text-indigo-600" : "bg-gray-50 text-gray-400"
+                          expandedSales.has(sale.id) ? "bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400" : "bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500"
                         )}>
                           {expandedSales.has(sale.id) ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                         </div>
@@ -220,31 +220,31 @@ export default function CreditBook() {
                           exit={{ height: 0, opacity: 0 }}
                           transition={{ duration: 0.2 }}
                         >
-                          <div className="px-4 pb-4 pt-0 border-t border-gray-100 bg-gray-50/50">
+                          <div className="px-4 pb-4 pt-0 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
                             <div className="mt-4 space-y-2">
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2">Item Details</p>
                               {sale.items.map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
+                                <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-gray-50 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-100">
+                                    <div className="w-8 h-8 bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-700">
                                       {item.quantity}x
                                     </div>
                                     <div>
-                                      <p className="text-sm font-bold text-gray-900">{item.name}</p>
-                                      <p className="text-[10px] text-gray-500 font-medium">
+                                      <p className="text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
                                         {formatCurrency(item.priceAtSale, sale.currency)} per unit
                                       </p>
                                     </div>
                                   </div>
                                   <div className="text-right">
-                                    <p className="text-sm font-black text-gray-900">
+                                    <p className="text-sm font-black text-gray-900 dark:text-white">
                                       {formatCurrency(item.priceAtSale * item.quantity, sale.currency)}
                                     </p>
                                   </div>
                                 </div>
                               ))}
                               
-                              <div className="mt-4 p-4 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-200">
+                              <div className="mt-4 p-4 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100 dark:shadow-none">
                                 <div className="flex items-center justify-between mb-2 opacity-80">
                                   <span className="text-xs font-bold uppercase tracking-widest">Subtotal</span>
                                   <span className="text-sm font-bold">{formatCurrency(sale.subtotal, sale.currency)}</span>

@@ -1,14 +1,11 @@
 {
-  "name": "Mini ERP Store Manager",
+  "name": "Mini ERP System",
   "short_name": "Mini ERP",
   "description": "Manage your store transactions, inventory, and ledger.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4338ca",
-  "orientation": "portrait",
-  "scope": "/",
-  "categories": ["business", "finance", "productivity"],
   "icons": [
     {
       "src": "/favicon.svg",
