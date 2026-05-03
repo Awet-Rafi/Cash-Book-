@@ -13,12 +13,14 @@ import {
   User, 
   Clock,
   Filter,
-  ArrowRight
+  ArrowUpRight,
+  TrendingUp,
+  Wallet
 } from 'lucide-react';
-import { format, isSameDay, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
-
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 
 export default function CreditBook() {
   const { businessId } = useAuth();
@@ -41,7 +43,6 @@ export default function CreditBook() {
         };
       }) as Sale[];
       
-      // Only keep credit sales
       setSales(salesData.filter(s => s.paymentMethod === 'credit'));
       setLoading(false);
     }, (error) => {
@@ -49,7 +50,7 @@ export default function CreditBook() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [businessId]);
 
   const toggleSale = (saleId: string) => {
     const newExpanded = new Set(expandedSales);
@@ -69,6 +70,23 @@ export default function CreditBook() {
     });
   }, [sales, searchTerm, filterDate]);
 
+  const stats = useMemo(() => {
+    const now = new Date();
+    const thisMonth = { start: startOfMonth(now), end: endOfMonth(now) };
+    
+    const monthSales = sales.filter(s => {
+      const d = parseISO(s.timestamp);
+      return isWithinInterval(d, thisMonth);
+    });
+
+    return {
+      total: sales.reduce((acc, s) => acc + s.totalAmount, 0),
+      count: sales.length,
+      thisMonthTotal: monthSales.reduce((acc, s) => acc + s.totalAmount, 0),
+      thisMonthCount: monthSales.length
+    };
+  }, [sales]);
+
   const groupedSales = useMemo(() => {
     const groups: { [key: string]: Sale[] } = {};
     filteredSales.forEach(sale => {
@@ -84,131 +102,173 @@ export default function CreditBook() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-500 font-medium animate-pulse">Loading Credit Sales...</p>
+        <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 animate-pulse">Initializing Financial Audit...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header & Stats */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Credit Sales</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Daily log of all credit sales and item details</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+    <div className="max-w-screen-2xl mx-auto space-y-4 pb-20 p-2 lg:p-4 bg-gray-50 dark:bg-gray-950 min-h-screen">
+      {/* HUD Header */}
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+        <div className="flex-1 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-6 rounded-2xl shadow-sm relative overflow-hidden group">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-[0.3em]">Credit Exposure Protocol</span>
+              </div>
+              <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight leading-none uppercase">
+                Credit <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-indigo-600">Analytics</span>
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 font-bold max-w-sm text-[10px] uppercase tracking-widest leading-relaxed opacity-70">
+                Systematic tracking of non-liquid assets and deferred accounts receivable.
+              </p>
             </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Total Credit Sales</p>
-              <p className="text-lg font-black text-gray-900 dark:text-white">{sales.length}</p>
+            
+            <div className="flex gap-4 sm:border-l border-gray-100 dark:border-gray-800 sm:pl-8">
+              <div className="space-y-1">
+                <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Active Credits</p>
+                <p className="text-3xl font-black text-gray-900 dark:text-white font-mono leading-none">{stats.count}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Growth (M)</p>
+                <p className="text-3xl font-black text-emerald-500 font-mono leading-none">+{stats.thisMonthCount}</p>
+              </div>
             </div>
           </div>
+          {/* Subtle grid background */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+               style={{backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '24px 24px'}} />
+        </div>
+
+        <div className="lg:w-80 bg-indigo-600 dark:bg-indigo-500 p-6 rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none flex flex-col justify-center relative overflow-hidden group">
+          <p className="text-[10px] font-black text-indigo-100 uppercase tracking-[0.3em] mb-2 opacity-80">Total Liability</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-xl font-black text-indigo-200 font-mono opacity-50">$</span>
+            <p className="text-4xl font-black text-white font-mono leading-none tracking-tighter">
+              {stats.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <Wallet className="absolute -right-4 -bottom-4 w-32 h-32 text-white opacity-[0.07] group-hover:scale-110 transition-transform duration-700" />
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+      {/* Control Strip */}
+      <div className="flex flex-col sm:flex-row gap-2 bg-white dark:bg-gray-900 p-2 rounded-xl border border-gray-100 dark:border-gray-800">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by customer name..."
+            placeholder="Search by customer or ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm dark:text-white dark:placeholder-gray-500"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-950 border-none rounded-lg text-xs font-bold dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
           />
         </div>
-        <div className="relative group">
-          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+        <div className="w-full sm:w-48 relative">
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm dark:text-white"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-950 border-none rounded-lg text-xs font-bold dark:text-white focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
           />
         </div>
+        <button className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-black rounded-lg text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-md">
+          Export Log
+        </button>
       </div>
 
-      {/* Sales List */}
-      <div className="space-y-8">
+      {/* Audit Registry */}
+      <div className="space-y-8 mt-6">
         {groupedSales.length === 0 ? (
-          <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
-            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Filter className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-gray-900 rounded-3xl border-2 border-dashed border-gray-100 dark:border-gray-800">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-950 rounded-2xl flex items-center justify-center mb-4 rotate-12 group-hover:rotate-0 transition-transform">
+              <Filter className="w-8 h-8 text-gray-200 dark:text-gray-700" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">No credit sales found</h3>
-            <p className="text-gray-500 dark:text-gray-400 max-w-xs mx-auto mt-1">Try adjusting your search or filters to find what you're looking for.</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Zero Matching Records</p>
           </div>
         ) : (
           groupedSales.map(([date, daySales]) => (
             <div key={date} className="space-y-4">
-              <div className="flex items-center gap-3 px-2">
-                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-4 py-1.5 rounded-full border border-gray-200 dark:border-gray-700">
-                  <Calendar className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-widest">
-                    {format(parseISO(date), 'EEEE, MMMM do, yyyy')}
+              <div className="flex items-center gap-4 px-2">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.25em] leading-none mb-1">
+                    {format(parseISO(date), 'MMMM yyyy')}
                   </span>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                      {format(parseISO(date), 'EEEE, do')}
+                    </h2>
+                    <div className="h-px w-12 bg-gray-200 dark:bg-gray-800" />
+                    <span className="px-2 py-0.5 bg-gray-900 dark:bg-white text-white dark:text-black rounded text-[9px] font-black font-mono">
+                      {daySales.length} TXN
+                    </span>
+                  </div>
                 </div>
-                <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                <div className="ml-auto text-right">
+                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Daily Value</p>
+                  <p className="text-xl font-black text-gray-900 dark:text-white font-mono leading-none">
+                    ${daySales.reduce((acc, s) => acc + s.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  </p>
+                </div>
               </div>
 
-              <div className="grid gap-3">
+              <div className="grid grid-cols-1 gap-2">
                 {daySales.map((sale) => (
                   <motion.div
-                    layout
                     key={sale.id}
+                    layout
                     className={cn(
-                      "bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden transition-all duration-200",
-                      expandedSales.has(sale.id) ? "ring-2 ring-indigo-500/10 border-indigo-200 dark:border-indigo-900/50" : "hover:border-gray-300 dark:hover:border-gray-600"
+                      "group relative bg-white dark:bg-gray-900 border transition-all duration-300 rounded-xl overflow-hidden",
+                      expandedSales.has(sale.id)
+                        ? "border-indigo-500 ring-4 ring-indigo-500/5 shadow-2xl z-10"
+                        : "border-gray-100 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm"
                     )}
                   >
                     <div 
-                      className="p-4 flex flex-wrap items-center justify-between gap-4 cursor-pointer"
+                      className="p-3 sm:p-4 cursor-pointer flex items-center gap-4"
                       onClick={() => toggleSale(sale.id)}
                     >
-                      <div className="flex items-center gap-4 min-w-0 flex-1">
-                        <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 dark:text-white truncate">{sale.customerName || 'Guest'}</h3>
-                            <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100 dark:border-amber-900/50">
-                              Credit
+                      <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 dark:bg-gray-950 text-gray-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase truncate">
+                            {sale.customerName || 'Guest Session'}
+                          </h3>
+                          {sale.paymentMethod === 'credit' && (
+                            <span className="flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded border border-amber-100 dark:border-amber-900/30 uppercase tracking-tighter">
+                              <Clock className="w-2.5 h-2.5" />
+                              Deferred
                             </span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              {format(parseISO(sale.timestamp), 'hh:mm a')}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Package className="w-3.5 h-3.5" />
-                              {sale.items.length} {sale.items.length === 1 ? 'item' : 'items'}
-                            </div>
-                          </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest font-mono">
+                          <span>{format(parseISO(sale.timestamp), 'HH:mm')}</span>
+                          <span className="hidden sm:inline opacity-30">/</span>
+                          <span className="truncate">ID: {sale.id.slice(0, 8)}</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-6">
-                        <div className="text-right">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Amount</p>
-                          <p className="text-lg font-black text-indigo-600 dark:text-indigo-400">
-                            {formatCurrency(sale.totalAmount, sale.currency)}
-                          </p>
-                        </div>
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
-                          expandedSales.has(sale.id) ? "bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400" : "bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500"
-                        )}>
-                          {expandedSales.has(sale.id) ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                        </div>
+                      <div className="text-right">
+                        <p className="text-[14px] font-black text-indigo-600 dark:text-indigo-400 font-mono tracking-tight">
+                          ${sale.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-tighter mt-0.5">
+                          {sale.items.length} {sale.items.length === 1 ? 'Item' : 'Items'}
+                        </p>
+                      </div>
+
+                      <div className={cn(
+                        "w-5 h-8 flex items-center justify-center transition-transform duration-500 opacity-20 group-hover:opacity-100",
+                        expandedSales.has(sale.id) && "rotate-180 opacity-100 text-indigo-500"
+                      )}>
+                        <ChevronDown className="w-4 h-4" />
                       </div>
                     </div>
 
@@ -218,48 +278,54 @@ export default function CreditBook() {
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
+                          className="bg-gray-50 dark:bg-gray-950/50 border-t border-gray-100 dark:border-gray-800 overflow-hidden"
                         >
-                          <div className="px-4 pb-4 pt-0 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
-                            <div className="mt-4 space-y-2">
-                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2">Item Details</p>
-                              {sale.items.map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-700">
-                                      {item.quantity}x
+                          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                            <div className="lg:col-span-8">
+                              <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.3em] mb-4 flex items-center gap-3">
+                                <span>Manifest Breakdown</span>
+                                <div className="h-[1px] flex-1 bg-gray-200 dark:bg-gray-800" />
+                              </p>
+                              <div className="grid gap-1.5">
+                                {sale.items.map((item, i) => (
+                                  <div key={i} className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 group/item hover:border-indigo-300 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                      <span className="w-7 h-7 flex items-center justify-center bg-gray-50 dark:bg-gray-950 text-[10px] font-black text-gray-400 group-hover/item:text-indigo-500 transition-colors rounded">
+                                        {item.quantity}
+                                      </span>
+                                      <div>
+                                        <p className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-tight leading-tight">{item.name}</p>
+                                        <p className="text-[9px] font-bold text-gray-400 font-mono">@{item.priceAtSale.toLocaleString()} {sale.currency}</p>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <p className="text-sm font-bold text-gray-900 dark:text-white">{item.name}</p>
-                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                                        {formatCurrency(item.priceAtSale, sale.currency)} per unit
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-black text-gray-900 dark:text-white">
-                                      {formatCurrency(item.priceAtSale * item.quantity, sale.currency)}
+                                    <p className="text-xs font-black text-gray-900 dark:text-white font-mono">
+                                      {(item.priceAtSale * item.quantity).toLocaleString()}
                                     </p>
                                   </div>
-                                </div>
-                              ))}
-                              
-                              <div className="mt-4 p-4 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100 dark:shadow-none">
-                                <div className="flex items-center justify-between mb-2 opacity-80">
-                                  <span className="text-xs font-bold uppercase tracking-widest">Subtotal</span>
-                                  <span className="text-sm font-bold">{formatCurrency(sale.subtotal, sale.currency)}</span>
-                                </div>
-                                {sale.discount > 0 && (
-                                  <div className="flex items-center justify-between mb-2 opacity-80">
-                                    <span className="text-xs font-bold uppercase tracking-widest">Discount</span>
-                                    <span className="text-sm font-bold">-{formatCurrency(sale.discount, sale.currency)}</span>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div className="lg:col-span-4 space-y-4">
+                              <div className="p-5 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 space-y-4 shadow-sm">
+                                <div className="space-y-1">
+                                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Summary</p>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase">Subtotal</span>
+                                    <span className="text-sm font-black font-mono text-gray-900 dark:text-white">${sale.totalAmount.toLocaleString()}</span>
                                   </div>
-                                )}
-                                <div className="h-px bg-white/20 my-3" />
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-bold uppercase tracking-widest">Grand Total</span>
-                                  <span className="text-xl font-black">{formatCurrency(sale.totalAmount, sale.currency)}</span>
+                                  <div className="flex justify-between items-baseline pt-2 border-t border-gray-50 dark:border-gray-800">
+                                    <span className="text-[10px] font-black text-indigo-500 uppercase">Balance Due</span>
+                                    <span className="text-xl font-black font-mono text-indigo-600 dark:text-indigo-400">${sale.totalAmount.toLocaleString()}</span>
+                                  </div>
                                 </div>
+                                <Link 
+                                  to="/ledger" 
+                                  className="w-full py-2.5 bg-gray-950 dark:bg-white text-white dark:text-black rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-600 dark:hover:bg-indigo-400 hover:text-white transition-all shadow-md group/btn"
+                                >
+                                  Ledger Protocol
+                                  <ArrowUpRight className="w-3.5 h-3.5 group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 transition-transform" />
+                                </Link>
                               </div>
                             </div>
                           </div>
@@ -276,3 +342,4 @@ export default function CreditBook() {
     </div>
   );
 }
+

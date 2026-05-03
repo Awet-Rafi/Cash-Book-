@@ -9,23 +9,15 @@ service cloud.firestore {
     // ===============================================================
     // Global Helpers
     // ===============================================================
+    
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isVerified() {
-      return isSignedIn();
-    }
-
-    // Role-based access using hardcoded emails
     function isAdmin() {
       return isSignedIn() && 
              (request.auth.token.email.lower() == 'tekle.taf@gmail.com' || 
               request.auth.token.email.lower() == 'awet16@gmail.com');
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128;
     }
 
     function incoming() {
@@ -36,20 +28,13 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // O(1) profile lookup (Cached)
-    function getUserProfile() {
-      return isSignedIn() && exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data
-        : null;
-    }
-
-    function getBusinessId() {
-      let profile = getUserProfile();
-      return profile != null ? profile.businessId : null;
-    }
-
     function isBusinessMember(businessId) {
-      return isSignedIn() && (isAdmin() || (getBusinessId() != null && getBusinessId() == businessId));
+      return isSignedIn() && (
+        isAdmin() || (
+          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.businessId == businessId
+        )
+      );
     }
 
     // ===============================================================
@@ -60,23 +45,22 @@ service cloud.firestore {
       return data.keys().hasAll(['uid', 'businessId', 'email', 'displayName']) &&
              data.keys().size() == 4 &&
              data.uid == request.auth.uid &&
-             data.businessId is string && data.businessId.size() > 0 && data.businessId.size() <= 128 &&
-             data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
-             data.displayName is string && data.displayName.size() <= 100;
+             data.businessId is string &&
+             data.email is string &&
+             data.displayName is string;
     }
 
     function isValidBusiness(data) {
       return data.keys().hasAll(['name', 'ownerId', 'createdAt']) &&
-             data.keys().size() >= 3 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.name is string &&
              data.ownerId == request.auth.uid &&
              data.createdAt == request.time;
     }
 
     function isValidProduct(data) {
       return data.keys().hasAll(['name', 'price', 'costPrice', 'stockQuantity', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.businessId is string &&
+             data.name is string &&
              data.price is number &&
              data.costPrice is number &&
              data.stockQuantity is number;
@@ -84,68 +68,60 @@ service cloud.firestore {
 
     function isValidSale(data) {
       return data.keys().hasAll(['items', 'totalAmount', 'totalCost', 'profit', 'timestamp', 'paymentMethod', 'businessId', 'currency', 'status']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.items is list && data.items.size() <= 100 &&
+             data.businessId is string &&
+             data.items is list &&
              data.totalAmount is number &&
-             data.totalCost is number &&
-             data.profit is number &&
-             data.timestamp == request.time &&
+             data.timestamp is timestamp &&
              data.paymentMethod in ['cash', 'credit'] &&
-             data.currency in ['USD', 'SSP'] &&
              data.status in ['paid', 'pending'];
     }
 
     function isValidExpense(data) {
       return data.keys().hasAll(['description', 'amount', 'timestamp', 'businessId', 'currency']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.description is string && data.description.size() > 0 && data.description.size() <= 500 &&
+             data.businessId is string &&
              data.amount is number &&
-             data.timestamp == request.time &&
-             data.currency in ['USD', 'SSP'];
+             data.timestamp is timestamp;
     }
 
     function isValidCustomer(data) {
       return data.keys().hasAll(['name', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+             data.businessId is string &&
+             data.name is string;
     }
 
     function isValidPayment(data) {
       return data.keys().hasAll(['customerId', 'amount', 'timestamp', 'businessId', 'currency', 'creditDeductionUSD']) &&
              data.businessId is string &&
-             data.customerId is string &&
-             data.amount is number &&
-             (data.timestamp is number || data.timestamp is timestamp) &&
-             data.currency in ['USD', 'SSP'] &&
-             data.creditDeductionUSD is number;
+             data.amount is number;
     }
 
     function isValidCashTransaction(data) {
       return data.keys().hasAll(['type', 'amount', 'currency', 'notes', 'timestamp', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
+             data.businessId is string &&
              data.type in ['in', 'out'] &&
              data.amount is number &&
-             data.currency in ['USD', 'SSP'] &&
-             data.timestamp == request.time;
-    }
-
-    function isValidEmployee(data) {
-      return data.keys().hasAll(['name', 'position', 'salary', 'salaryCurrency', 'hireDate', 'status', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.position is string && data.position.size() > 0 && data.position.size() <= 100 &&
-             data.salary is number &&
-             data.salaryCurrency in ['USD', 'SSP'] &&
-             data.status in ['active', 'inactive'];
+             data.timestamp is timestamp;
     }
 
     function isValidStockMovement(data) {
       return data.keys().hasAll(['productId', 'type', 'quantity', 'timestamp', 'businessId']) &&
-             data.businessId is string && data.businessId.size() <= 128 &&
-             data.productId is string && data.productId.size() <= 128 &&
+             data.businessId is string &&
              data.type in ['sale', 'restock', 'adjustment', 'edit_sale'] &&
              data.quantity is number &&
-             data.timestamp == request.time;
+             data.timestamp is timestamp;
+    }
+
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['name', 'position', 'salary', 'salaryCurrency', 'hireDate', 'status', 'businessId']) &&
+             data.businessId is string &&
+             data.name is string;
+    }
+
+    function isValidOrderContainer(data) {
+      return data.keys().hasAll(['name', 'status', 'createdAt', 'businessId', 'items', 'totalCost', 'externalExpenses']) &&
+             data.businessId is string &&
+             data.name is string &&
+             data.items is list;
     }
 
     // ===============================================================
@@ -154,89 +130,76 @@ service cloud.firestore {
 
     match /userProfiles/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      // Allow create for signed in users (even if not verified) to allow onboarding
       allow create: if isSignedIn() && isValidUserProfile(incoming()) && uid == request.auth.uid;
-      allow update: if isVerified() && request.auth.uid == uid && 
-                     isValidUserProfile(incoming()) && 
-                     incoming().businessId == existing().businessId;
+      allow update: if isSignedIn() && request.auth.uid == uid && isValidUserProfile(incoming());
     }
 
     match /businesses/{businessId} {
-      allow read: if isVerified() && (resource.data.ownerId == request.auth.uid || isAdmin());
-      allow create: if isVerified() && isValidBusiness(incoming()) && isValidId(businessId);
-      allow update: if isVerified() && (resource.data.ownerId == request.auth.uid || isAdmin()) &&
-                     isValidBusiness(incoming()) && 
-                     incoming().ownerId == existing().ownerId;
+      allow read: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn() && isValidBusiness(incoming());
+      allow update: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid) && isValidBusiness(incoming());
     }
 
     match /products/{productId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidProduct(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) && 
-                     isValidProduct(incoming()) && 
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidProduct(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidProduct(incoming()) && incoming().businessId == existing().businessId;
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /sales/{saleId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidSale(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidSale(incoming()) &&
-                     incoming().businessId == existing().businessId &&
-                     (isAdmin() || (existing().status != 'paid'));
-      allow delete: if isVerified() && isBusinessMember(existing().businessId) && (isAdmin() || existing().status != 'paid');
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidSale(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidSale(incoming()) && (isAdmin() || existing().status != 'paid');
+      allow delete: if isBusinessMember(existing().businessId) && (isAdmin() || existing().status != 'paid');
     }
 
     match /expenses/{expenseId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidExpense(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidExpense(incoming()) &&
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidExpense(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidExpense(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /customers/{customerId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidCustomer(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidCustomer(incoming()) &&
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidCustomer(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidCustomer(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /payments/{paymentId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidPayment(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidPayment(incoming()) &&
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidPayment(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidPayment(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /cashTransactions/{transactionId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidCashTransaction(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidCashTransaction(incoming()) &&
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidCashTransaction(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidCashTransaction(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /employees/{employeeId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidEmployee(incoming()) && isBusinessMember(incoming().businessId);
-      allow update: if isVerified() && isBusinessMember(existing().businessId) &&
-                     isValidEmployee(incoming()) &&
-                     incoming().businessId == existing().businessId;
-      allow delete: if isVerified() && isBusinessMember(existing().businessId);
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidEmployee(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidEmployee(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
 
     match /stockMovements/{movementId} {
-      allow read: if isVerified() && (isAdmin() || (resource.data.businessId == getBusinessId()));
-      allow create: if isVerified() && isValidStockMovement(incoming()) && isBusinessMember(incoming().businessId);
-      allow update, delete: if isVerified() && isAdmin(); // Only admins can correct logs
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidStockMovement(incoming());
+      allow update, delete: if isSignedIn() && isAdmin();
+    }
+
+    match /order_containers/{containerId} {
+      allow read: if isSignedIn() && (isAdmin() || isBusinessMember(resource.data.businessId));
+      allow create: if isBusinessMember(incoming().businessId) && isValidOrderContainer(incoming());
+      allow update: if isBusinessMember(existing().businessId) && isValidOrderContainer(incoming());
+      allow delete: if isBusinessMember(existing().businessId);
     }
   }
 }

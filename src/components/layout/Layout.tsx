@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,10 +39,61 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    'Dashboard': true,
     'Sales': true,
+    'Reports': true,
   });
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Swipe detection state
+  const [touchStart, setTouchStart] = useState<{ x: number, y: number } | null>(null);
+  const [touchEnd, setTouchEnd] = useState<{ x: number, y: number } | null>(null);
+
+  // Minimum swipe distance (in px)
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY
+    });
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY
+    });
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd || isSidebarOpen) return;
+    
+    const distanceX = touchStart.x - touchEnd.x;
+    const distanceY = touchStart.y - touchEnd.y;
+    const isLeftSwipe = distanceX > minSwipeDistance;
+    const isRightSwipe = distanceX < -minSwipeDistance;
+
+    // Only swipe if horizontal movement is greater than vertical movement
+    if (Math.abs(distanceX) > Math.abs(distanceY)) {
+      const cycleRoutes = ['/', '/ledger'];
+      const currentPath = location.pathname === '/pos' ? '/' : location.pathname;
+      const currentIdx = cycleRoutes.indexOf(currentPath);
+
+      if (currentIdx !== -1) {
+        if (isLeftSwipe) {
+          // Next route
+          const nextIdx = (currentIdx + 1) % cycleRoutes.length;
+          navigate(cycleRoutes[nextIdx]);
+        } else if (isRightSwipe) {
+          // Previous route
+          const prevIdx = (currentIdx - 1 + cycleRoutes.length) % cycleRoutes.length;
+          navigate(cycleRoutes[prevIdx]);
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -57,37 +108,33 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  const isProtectedRoute = location.pathname === '/inventory' || location.pathname === '/reports';
+  const isProtectedRoute = location.pathname === '/inventory' || location.pathname === '/reports' || location.pathname === '/dashboard';
 
   const navigationGroups = React.useMemo(() => {
     const groups = [
       {
-        title: 'Dashboard',
-        items: [
-          { name: 'Overview', path: '/', icon: LayoutDashboard }
-        ]
-      },
-      {
         title: 'Sales',
         items: [
-          { name: 'POS / Sales', path: '/pos', icon: ShoppingCart },
+          { name: 'POS / Sales', path: '/', icon: ShoppingCart },
+          { name: 'Customer Ledger', path: '/ledger', icon: Book },
           { name: 'Credit Sales', path: '/credit-book', icon: CreditCard },
-          { name: 'Orders', path: '/order-book', icon: Truck },
-          { name: 'Invoice', path: '/invoices', icon: FileText }
+          { name: 'Cash Book', path: '/cash-book', icon: DollarSign }
         ]
       },
       {
-        title: 'Customers',
+        title: 'Reports',
         items: [
-          { name: 'Customer Ledger', path: '/ledger', icon: Book }
+          { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+          { name: 'Detailed Reports', path: '/reports', icon: BarChart3 }
         ]
       },
       {
         title: 'Finance',
         items: [
-          { name: 'Cash Book', path: '/cash-book', icon: DollarSign },
           { name: 'Expenses', path: '/expenses', icon: Wallet },
-          { name: 'Receipts', path: '/receipt-book', icon: Receipt }
+          { name: 'Receipts', path: '/receipt-book', icon: Receipt },
+          { name: 'Orders', path: '/order-book', icon: Truck },
+          { name: 'Invoice', path: '/invoices', icon: FileText }
         ]
       },
       {
@@ -95,12 +142,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         items: [
           { name: 'Inventory', path: '/inventory', icon: Package },
           { name: 'Stock Movements', path: '/store-book', icon: HistoryIcon }
-        ]
-      },
-      {
-        title: 'Reports',
-        items: [
-          { name: 'Reports', path: '/reports', icon: BarChart3 }
         ]
       },
       {
@@ -148,7 +189,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex transition-colors duration-200">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex transition-colors duration-200">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -185,15 +226,15 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   <button 
                     onClick={() => toggleGroup(group.title)}
                     className={cn(
-                      "w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-[0.15em] transition-all hover:bg-gray-50 dark:hover:bg-gray-700/50",
+                      "w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-black uppercase tracking-[0.15em] transition-all hover:bg-gray-50 dark:hover:bg-gray-700/50",
                       hasActiveChild ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-500"
                     )}
                   >
                     <span>{group.title}</span>
                     {isExpanded ? (
-                      <ChevronDown className="w-2.5 h-2.5" />
+                      <ChevronDown className="w-3 h-3" />
                     ) : (
-                      <ChevronRight className="w-2.5 h-2.5" />
+                      <ChevronRight className="w-3 h-3" />
                     )}
                   </button>
                   
@@ -209,7 +250,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                         {group.items.map((item: any) => {
                           const Icon = item.icon;
                           const isActive = location.pathname === item.path;
-                          const isProtected = item.path === '/inventory' || item.path === '/reports';
+                          const isProtected = item.path === '/inventory' || item.path === '/reports' || item.path === '/dashboard';
                           
                           return (
                             <Link
@@ -217,7 +258,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                               to={item.path}
                               onClick={() => setIsSidebarOpen(false)}
                               className={cn(
-                                "flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 group relative overflow-hidden",
+                                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group relative overflow-hidden",
                                 isActive 
                                   ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 shadow-sm" 
                                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-white"
@@ -246,23 +287,23 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </nav>
 
           <div className="p-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
-            <div className="flex items-center gap-2 px-3 py-2">
+            <div className="flex items-center gap-3 px-3 py-2">
               <img 
                 src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}`} 
                 alt="Profile" 
-                className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-700"
+                className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700"
                 referrerPolicy="no-referrer"
               />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{user?.displayName}</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{isAdmin ? 'Administrator' : 'Staff'}</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{user?.displayName}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{isAdmin ? 'Administrator' : 'Staff'}</p>
               </div>
             </div>
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-[0.98]"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-[0.98]"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-5 h-5" />
               Sign Out
             </button>
           </div>
@@ -270,14 +311,19 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 lg:px-8 shrink-0 transition-colors">
-          <div className="flex items-center gap-4">
+      <main 
+        className="flex-1 flex flex-col min-w-0 overflow-hidden"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-3 lg:px-6 shrink-0 transition-colors">
+          <div className="flex items-center gap-3">
             <button 
               className="lg:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5" />
             </button>
             
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -286,12 +332,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {location.pathname === '/pos' && (
+            {location.pathname === '/' && (
               <>
                 {isAdmin && (
                   <Link 
                     to="/admin"
-                    className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all border border-indigo-100 dark:border-indigo-900/30"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all border border-indigo-100 dark:border-indigo-900/30"
                   >
                     <ShieldCheck className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Admin</span>
@@ -299,7 +345,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 )}
                 <button 
                   onClick={handleLogout}
-                  className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100 dark:border-red-900/30"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100 dark:border-red-900/30"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Sign Out</span>
@@ -308,40 +354,40 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             )}
             <button
               onClick={toggleTheme}
-              className="p-2 sm:p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-all shadow-sm active:scale-95"
+              className="p-1.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-all shadow-sm active:scale-95"
               aria-label="Toggle night mode"
             >
-              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
 
             {isProtectedRoute && isPinUnlocked && (
               <button 
                 onClick={handleLock}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100 dark:border-red-900/30"
+                className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100 dark:border-red-900/30"
               >
-                <Lock className="w-4 h-4" />
+                <Lock className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Lock Section</span>
               </button>
             )}
             <div className={cn(
-              "hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+              "hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-colors",
               isOnline 
                 ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-900/30" 
                 : "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-100 dark:border-orange-900/30"
             )}>
               <div className={cn(
-                "w-2 h-2 rounded-full",
+                "w-1.5 h-1.5 rounded-full",
                 isOnline ? "bg-green-500 animate-pulse" : "bg-orange-500"
               )} />
               {isOnline ? (
-                <div className="flex items-center gap-1.5">
-                  <Wifi className="w-3 h-3" />
+                <div className="flex items-center gap-1">
+                  <Wifi className="w-2.5 h-2.5" />
                   <span>Online</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <WifiOff className="w-3 h-3" />
-                  <span>Offline (Syncing...)</span>
+                <div className="flex items-center gap-1">
+                  <WifiOff className="w-2.5 h-2.5" />
+                  <span>Offline</span>
                 </div>
               )}
             </div>
@@ -350,7 +396,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
         <div className={cn(
           "flex-1 flex flex-col min-w-0 transition-colors",
-          location.pathname === '/pos' ? "h-full overflow-hidden" : "overflow-y-auto p-4 lg:p-8"
+          location.pathname === '/' ? "h-full overflow-hidden" : "overflow-y-auto p-2 lg:p-4"
         )}>
           {children}
         </div>

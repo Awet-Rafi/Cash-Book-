@@ -18,6 +18,9 @@
 @variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html {
+    font-size: 115%;
+  }
   body {
     @apply antialiased;
   }

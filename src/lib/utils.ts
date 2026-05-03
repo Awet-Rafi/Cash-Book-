@@ -16,7 +16,7 @@ export function formatCurrency(amount: number, currency: 'USD' | 'SSP' = 'USD') 
 }
 
 export function safeTimestamp(timestamp: any): string {
-  if (!timestamp) return new Date().toISOString();
+  if (!timestamp) return "";
   if (typeof timestamp.toDate === 'function') {
     return timestamp.toDate().toISOString();
   }

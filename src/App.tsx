@@ -97,13 +97,13 @@ const AppContent = () => {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<POS />} />
         <Route path="/cash-book" element={<CashBook />} />
         <Route path="/credit-book" element={<CreditBook />} />
         <Route path="/ledger" element={<CustomerLedger />} />
         <Route path="/pos" element={<POS />} />
         <Route path="/expenses" element={<Expenses />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<PinGate><Dashboard /></PinGate>} />
         <Route path="/inventory" element={<PinGate><Inventory /></PinGate>} />
         <Route path="/order-book" element={<OrderBook />} />
         <Route path="/receipt-book" element={<ReceiptBook />} />

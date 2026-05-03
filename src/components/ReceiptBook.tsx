@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy, Timestamp, doc, writeBatch, increment, updateDoc, where } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Sale } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { Search, Receipt, Calendar, User, CreditCard, DollarSign, Eye, X, Printer, Trash2, Edit3 } from 'lucide-react';
@@ -33,6 +33,8 @@ export default function ReceiptBook() {
         timestamp: safeTimestamp(doc.data().timestamp)
       } as Sale)));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'sales');
     });
 
     return () => unsubSales();

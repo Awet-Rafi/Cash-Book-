@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, writeBatch, query, orderBy, where } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import * as XLSX from 'xlsx';
@@ -79,6 +79,8 @@ export default function OrderBook() {
           pushedAt: safeTimestamp(doc.data().pushedAt)
         } as OrderContainer)));
         setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'order_containers');
       }
     );
 
@@ -87,6 +89,8 @@ export default function OrderBook() {
         id: doc.id, 
         ...doc.data()
       } as Product)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
 
     return () => {

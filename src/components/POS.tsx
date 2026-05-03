@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where, doc, serverTimestamp, increment, 
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, SaleItem, Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle, X, FileText } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle, X, FileText, Calendar } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,16 +36,17 @@ export default function POS() {
   const [isCartOpenMobile, setIsCartOpenMobile] = useState(false);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
-    const checkDesktop = () => {
-      const desktop = window.innerWidth >= 1024;
-      setIsDesktop(desktop);
+    const checkViewport = () => {
+      const wide = window.innerWidth >= 1024;
+      setIsDesktop(wide);
     };
     
-    checkDesktop();
-    window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+    return () => window.removeEventListener('resize', checkViewport);
   }, []);
 
   useEffect(() => {
@@ -60,6 +61,8 @@ export default function POS() {
 
     const unsubRecent = onSnapshot(qRecent, (snapshot) => {
       setRecentSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'sales/recent');
     });
 
     const qProducts = query(collection(db, 'products'), where('businessId', '==', businessId));
@@ -276,7 +279,14 @@ export default function POS() {
         status: paymentMethod === 'cash' ? 'paid' : 'pending'
       };
 
-      if (editingSaleId) {
+      if (transactionDate) {
+        // Use the selected date if provided
+        const selectedDate = new Date(transactionDate);
+        // Set time to current time so it's not just 00:00:00
+        const now = new Date();
+        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+        saleData.timestamp = selectedDate;
+      } else if (editingSaleId) {
         saleData.updatedAt = serverTimestamp();
       } else {
         saleData.timestamp = serverTimestamp();
@@ -323,7 +333,7 @@ export default function POS() {
           productName: item.name,
           type: 'sale',
           quantity: -item.quantity,
-          timestamp: serverTimestamp(),
+          timestamp: saleData.timestamp || serverTimestamp(),
           notes: editingSaleId ? `Updated quantity in sale ${editingSaleId}` : `Sold in transaction ${saleRef.id}`,
           referenceId: saleRef.id,
           customerName: selectedCustomer ? selectedCustomer.name : (guestName || 'Guest'),
@@ -378,91 +388,87 @@ export default function POS() {
   );
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-4 lg:gap-6 relative overflow-hidden">
+    <div className="h-full flex flex-col lg:flex-row gap-1 lg:gap-1 relative overflow-hidden p-0.5 lg:p-1 bg-gray-50 dark:bg-gray-900/50">
       {/* Product Selection */}
       <div className={cn(
-        "flex-1 flex flex-col min-w-0 transition-all duration-300 h-full",
+        "flex-1 flex flex-col min-w-0 transition-all duration-300 min-h-0",
         !isDesktop && isCartOpenMobile && "blur-sm pointer-events-none scale-[0.98]"
       )}>
-        <div className="relative mb-2 shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+        <div className="relative mb-1.5 shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
           <input 
             type="text" 
             autoComplete="off"
             placeholder="Search products..."
-            className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm text-[13px] dark:text-white dark:placeholder-gray-500"
+            className="w-full pl-8 pr-3 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none transition-all shadow-sm text-[11px] dark:text-white dark:placeholder-gray-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-1">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden h-full">
-            <div className="overflow-x-auto h-full">
-              <table className="w-full text-left border-collapse min-w-[500px]">
-                <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
-                  <tr className="border-b border-gray-100 dark:border-gray-700">
-                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Product</th>
-                    <th className="hidden sm:table-cell px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Category</th>
-                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Price</th>
-                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-center">Stock</th>
-                    <th className="px-3 lg:px-4 py-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                  {filteredProducts.map((product) => (
-                    <tr 
-                      key={product.id} 
-                      className={cn(
-                        "hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors group animate-in fade-in duration-200",
-                        product.stockQuantity <= 0 && "opacity-50 grayscale bg-gray-50/50 dark:bg-gray-900/50"
-                      )}
-                    >
-                      <td className="px-3 lg:px-4 py-1 lg:py-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className="hidden sm:flex w-6 h-6 bg-gray-50 dark:bg-gray-700 rounded-lg items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/40 transition-colors">
-                            <ShoppingCart className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-indigo-400" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-900 dark:text-white text-[11px] lg:text-xs truncate max-w-[120px] lg:max-w-[180px]">{product.name}</p>
-                            <p className="sm:hidden text-[8px] text-gray-400 truncate">{product.category}</p>
-                          </div>
+        <div className="flex-1 min-h-0 overflow-hidden bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col">
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse table-fixed">
+              <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm font-mono">
+                <tr className="border-b border-gray-100 dark:border-gray-700 text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest h-8">
+                  <th className="px-1.5 py-1 w-[55%] sm:w-[30%]">Product</th>
+                  <th className="hidden sm:table-cell px-2 py-1 w-[20%]">Category</th>
+                  <th className="px-1.5 py-1 text-right w-[18%] sm:w-[20%]">Price</th>
+                  <th className="px-1.5 py-1 text-center w-[13%] sm:w-[15%]">Stock</th>
+                  <th className="px-1.5 py-1 text-right w-[14%] sm:w-[15%]">Add</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                {filteredProducts.map((product) => (
+                  <tr 
+                    key={product.id} 
+                    className={cn(
+                      "hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors group cursor-pointer",
+                      product.stockQuantity <= 0 && "opacity-50 grayscale bg-gray-50/50 dark:bg-gray-900/50"
+                    )}
+                    onClick={() => product.stockQuantity > 0 && addToCart(product)}
+                  >
+                    <td className="px-1.5 py-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 dark:text-white text-[13px] whitespace-normal leading-tight">{product.name}</p>
+                          <p className="text-[10px] text-gray-400 truncate opacity-70 leading-none">{product.category || 'No Category'}</p>
                         </div>
-                      </td>
-                      <td className="hidden sm:table-cell px-3 lg:px-4 py-1 lg:py-1.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">{product.category}</td>
-                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-[11px] font-black text-indigo-600 dark:text-indigo-400 text-right font-mono">
-                        {currency === 'USD' ? '$' : ''}
-                        {(product.price * rate).toLocaleString('en-US', { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
-                        {currency === 'SSP' ? ' SSP' : ''}
-                      </td>
-                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-center">
-                        <span className={cn(
-                          "text-[8px] font-black px-1.5 py-0 rounded-full inline-block min-w-[20px]",
-                          product.stockQuantity <= 5 ? "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                        )}>
-                          {product.stockQuantity}
-                        </span>
-                      </td>
-                      <td className="px-3 lg:px-4 py-1 lg:py-1.5 text-right">
-                        <button
-                          disabled={product.stockQuantity <= 0}
-                          onClick={() => addToCart(product)}
-                          className="p-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 transition-all shadow-sm active:scale-90"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              {filteredProducts.length === 0 && (
-                <div className="text-center py-20">
-                  <p className="text-gray-400 font-medium text-sm">No products found matching your search.</p>
-                </div>
-              )}
-            </div>
+                      </div>
+                    </td>
+                    <td className="hidden sm:table-cell px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">{product.category}</td>
+                    <td className="px-1.5 py-1 text-[13px] font-black text-indigo-600 dark:text-indigo-400 text-right font-mono">
+                      {currency === 'USD' ? '$' : ''}
+                      {(product.price * rate).toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
+                    </td>
+                    <td className="px-1.5 py-1 text-center">
+                      <span className={cn(
+                        "text-[10px] font-black px-1.5 py-0.5 rounded-full inline-block min-w-[16px]",
+                        product.stockQuantity <= 5 ? "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400" : "bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                      )}>
+                        {product.stockQuantity}
+                      </span>
+                    </td>
+                    <td className="px-1.5 py-1 text-right">
+                      <button
+                        disabled={product.stockQuantity <= 0}
+                        onClick={(e) => { e.stopPropagation(); addToCart(product); }}
+                        className="p-1 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 transition-all shadow-sm active:scale-90"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {filteredProducts.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 opacity-30">
+                <Search className="w-8 h-8 mb-2" />
+                <p className="text-gray-400 font-black text-[12px] uppercase tracking-[0.2em]">No products found</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -476,39 +482,46 @@ export default function POS() {
             exit={isDesktop ? { x: 20, opacity: 0 } : { y: '100%' }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className={cn(
-              "flex flex-col bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl overflow-hidden shrink-0",
+              "flex flex-col bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-xl overflow-hidden shrink-0 min-h-0",
               isDesktop 
-                ? "w-[400px] h-full rounded-3xl" 
-                : "fixed inset-x-0 bottom-0 top-[10%] z-50 rounded-t-[32px] border-t-2 border-indigo-500/20"
+                ? "w-[380px] h-full rounded-xl" 
+                : "fixed inset-x-0 bottom-0 top-[12%] z-50 rounded-t-[24px] border-t-2 border-indigo-500/20"
             )}
           >
             {/* Mobile Grab Handle */}
             {!isDesktop && (
-              <div className="w-full flex justify-center py-3">
-                <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full" />
-              </div>
+              <button 
+                onClick={() => setIsCartOpenMobile(false)}
+                className="w-full flex justify-center py-1.5 active:scale-95 transition-transform shrink-0"
+              >
+                <div className="w-10 h-1 bg-gray-200 dark:bg-gray-700 rounded-full" />
+              </button>
             )}
 
-            <div className="p-2 lg:px-4 lg:py-1.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg">
-                  <ShoppingCart className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <div className="px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-1.5">
+                <div className={cn(
+                  "p-1 rounded-md transition-colors",
+                  paymentMethod === 'credit' ? "bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400" : "bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400"
+                )}>
+                  <ShoppingCart className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-tight font-mono">
-                  {editingSaleId ? 'Edit Order' : 'Current Order'}
+                <h3 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-tight font-mono leading-none">
+                  {editingSaleId ? 'Edit' : 'Cart'}
                 </h3>
               </div>
-              <div className="flex items-center gap-1.5">
+
+              <div className="flex items-center gap-1">
                 <button 
                   onClick={() => setIsHistoryOpen(!isHistoryOpen)}
                   className={cn(
-                    "px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all",
+                    "px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider transition-all",
                     isHistoryOpen 
                       ? "bg-indigo-600 text-white shadow-sm" 
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      : "bg-white dark:bg-gray-700 text-gray-500 border border-gray-100 dark:border-gray-600"
                   )}
                 >
-                  {isHistoryOpen ? 'Current Cart' : 'History'}
+                  {isHistoryOpen ? 'Basket' : 'Hist'}
                 </button>
                 {editingSaleId && (
                   <button 
@@ -520,70 +533,89 @@ export default function POS() {
                       setGuestName('');
                       setDiscount(0);
                     }}
-                    className="px-2 py-0.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-[8px] font-black uppercase tracking-wider hover:bg-red-100 transition-colors"
+                    className="px-1 py-0.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded text-[9px] font-black uppercase tracking-wider hover:bg-red-100"
                   >
                     Cancel
                   </button>
                 )}
                 {!isHistoryOpen && (
-                  <span className="px-1.5 py-0 bg-indigo-600 text-white rounded-full text-[9px] font-black">
+                  <span className="px-1 py-0.5 bg-indigo-600 text-white rounded-full text-[10px] font-black">
                     {cart.length}
                   </span>
-                )}
-                {!isDesktop && (
-                  <button 
-                    onClick={() => setIsCartOpenMobile(false)}
-                    className="p-1 bg-gray-200 dark:bg-gray-700 rounded-full text-gray-500 dark:text-gray-300"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
                 )}
               </div>
             </div>
             
-            <div className="px-2 lg:px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 space-y-1">
+            <div className="px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 space-y-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="relative">
                   <button 
                     onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
-                    className="w-full flex items-center justify-between pl-7 pr-1.5 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-lg text-[9px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-left dark:text-white"
+                    className={cn(
+                      "w-full flex items-center justify-between pl-6 pr-1.5 py-1 rounded-md text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-left dark:text-white",
+                      paymentMethod === 'credit' && !selectedCustomer 
+                        ? "bg-red-50 dark:bg-red-900/20 border-2 border-red-200" 
+                        : "bg-gray-50 dark:bg-gray-900/50 border border-transparent"
+                    )}
                   >
-                    <User className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
-                    <span className={cn("truncate", selectedCustomer ? "text-gray-900 dark:text-white" : "text-gray-400")}>
-                      {selectedCustomer ? selectedCustomer.name : 'Guest'}
+                    <User className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <span className="truncate">
+                      {selectedCustomer ? selectedCustomer.name : 'Cust'}
                     </span>
-                    <ChevronDown className={cn("w-2 h-2 text-gray-400 transition-transform", showCustomerDropdown && "rotate-180")} />
+                    <ChevronDown className={cn("w-3 h-3 text-gray-400 transition-transform", showCustomerDropdown && "rotate-180")} />
                   </button>
                   <AnimatePresence>
                     {showCustomerDropdown && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setShowCustomerDropdown(false)} />
-                        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-32 overflow-y-auto">
-                          <button onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }} className="w-full px-3 py-1 text-left text-[9px] hover:bg-gray-50 border-b font-black text-gray-400 uppercase">Guest</button>
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.95, y: -10 }} 
+                          animate={{ opacity: 1, scale: 1, y: 0 }} 
+                          exit={{ opacity: 0, scale: 0.95, y: -10 }} 
+                          className="absolute bottom-full mb-2 sm:top-full sm:bottom-auto sm:mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
+                        >
+                          <button onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }} className="w-full px-2 py-1 text-left text-[10px] hover:bg-gray-50 dark:hover:bg-gray-700 border-b font-black text-gray-400 uppercase">Guest</button>
                           {customers.map(customer => (
-                            <button key={customer.id} onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); }} className="w-full px-3 py-1 text-left text-[10px] font-bold hover:bg-indigo-50 border-b">{customer.name}</button>
+                            <button 
+                              key={customer.id} 
+                              onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); }} 
+                              className="w-full px-2 py-1 text-left text-[11px] font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border-b dark:border-gray-700 flex items-center justify-between dark:text-white"
+                            >
+                              <span>{customer.name}</span>
+                              {selectedCustomer?.id === customer.id && <CheckCircle2 className="w-2.5 h-2.5 text-indigo-500" />}
+                            </button>
                           ))}
                         </motion.div>
                       </>
                     )}
                   </AnimatePresence>
                 </div>
-                {!selectedCustomer && (
-                  <div className="relative">
-                    <User className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
-                    <input type="text" placeholder="Guest" className="w-full pl-7 pr-1.5 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-lg text-[9px] font-bold focus:ring-1 dark:text-white" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
-                  </div>
-                )}
+                <div className="relative">
+                  <Calendar className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+                  <input 
+                    type="date" 
+                    value={transactionDate} 
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                    className="w-full pl-6 pr-1 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[10px] font-black focus:ring-1 focus:ring-indigo-500 dark:text-white appearance-none" 
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="flex border dark:border-gray-700 rounded overflow-hidden">
-                  <button onClick={() => setPaymentMethod('cash')} className={cn("flex-1 py-0.5 text-[8px] font-black", paymentMethod === 'cash' ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>Cash</button>
-                  <button onClick={() => { setPaymentMethod('credit'); setCurrency('USD'); }} className={cn("flex-1 py-0.5 text-[8px] font-black", paymentMethod === 'credit' ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>Credit</button>
+              {!selectedCustomer && (
+                <div className="relative">
+                  <User className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  <input type="text" placeholder="Guest Name" className="w-full pl-6 pr-1 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 dark:text-white" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
                 </div>
-                <div className="flex border dark:border-gray-700 rounded overflow-hidden">
-                  <button onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }} className={cn("flex-1 py-0.5 text-[8px] font-black", (currency === 'USD' && !isMixedPayment) ? "bg-green-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400")}>USD</button>
-                  <button onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }} disabled={paymentMethod === 'credit'} className={cn("flex-1 py-0.5 text-[8px] font-black", (currency === 'SSP' && !isMixedPayment) ? "bg-green-600 text-white" : "bg-white dark:bg-gray-800 text-gray-400", paymentMethod === 'credit' && "opacity-50")}>SSP</button>
+              )}
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex bg-gray-100 dark:bg-gray-900 p-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                  <button onClick={() => setPaymentMethod('cash')} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", paymentMethod === 'cash' ? "bg-white dark:bg-gray-800 text-indigo-600 shadow-sm" : "text-gray-400")}>Cash</button>
+                  <button onClick={() => { setPaymentMethod('credit'); setCurrency('USD'); }} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", paymentMethod === 'credit' ? "bg-white dark:bg-gray-800 text-amber-600 shadow-sm" : "text-gray-400")}>Credit</button>
+                </div>
+                <div className="flex bg-gray-100 dark:bg-gray-900 p-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                  <button onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", (currency === 'USD' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>USD</button>
+                  <button onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }} disabled={paymentMethod === 'credit'} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", (currency === 'SSP' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>SSP</button>
                 </div>
               </div>
 
@@ -591,7 +623,7 @@ export default function POS() {
                 <button
                   onClick={() => setIsMixedPayment(!isMixedPayment)}
                   className={cn(
-                    "w-full py-0.5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all border flex items-center justify-center gap-1",
+                    "w-full py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest transition-all border flex items-center justify-center gap-1",
                     isMixedPayment
                       ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400"
                       : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-400"
@@ -604,8 +636,8 @@ export default function POS() {
               {isMixedPayment && (
                 <div className="space-y-1.5 p-1.5 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/20">
                   <div className="grid grid-cols-2 gap-1.5">
-                    <div className="space-y-0.5">
-                      <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block">USD Part</label>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest block">USD Part</label>
                       <input
                         type="number"
                         value={mixedUSD}
@@ -617,11 +649,11 @@ export default function POS() {
                           const remainingUSD = totalInUSD - usdVal;
                           setMixedSSP((remainingUSD * exchangeRate).toFixed(0));
                         }}
-                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white"
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm font-bold dark:text-white"
                       />
                     </div>
-                    <div className="space-y-0.5">
-                      <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest block">SSP Part</label>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest block">SSP Part</label>
                       <input
                         type="number"
                         value={mixedSSP}
@@ -633,7 +665,7 @@ export default function POS() {
                           const remainingSSP = totalInSSP - sspVal;
                           setMixedUSD((remainingSSP / exchangeRate).toFixed(2));
                         }}
-                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs font-bold dark:text-white"
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm font-bold dark:text-white"
                       />
                     </div>
                   </div>
@@ -642,109 +674,123 @@ export default function POS() {
 
               {(currency === 'SSP' || isMixedPayment) && (
                 <div className="relative">
-                  <label className="text-[7px] font-black text-gray-400 uppercase tracking-widest mb-0.5 block">Exchange Rate</label>
+                  <label className="text-[12px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Exchange Rate</label>
                   <input
                     type="number"
                     value={exchangeRate}
                     onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-1 text-[11px] font-black focus:ring-1 focus:ring-green-500 transition-all dark:text-white"
+                    className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-2 text-xs font-black focus:ring-1 focus:ring-green-500 transition-all dark:text-white"
                   />
-                  <span className="absolute right-3 top-[16px] text-[7px] font-black text-gray-400">SSP</span>
+                  <span className="absolute right-4 top-[32px] text-[12px] font-black text-gray-400">SSP</span>
                 </div>
               )}
             </div>
             
-            <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-800">
-              <div className="flex-1 overflow-y-auto p-2 lg:px-4 py-1.5 space-y-1 custom-scrollbar">
+            <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-800 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-2 lg:px-3 py-1.5 space-y-1 custom-scrollbar">
                 {isHistoryOpen ? (
                   <div className="space-y-1">
-                    <h4 className="text-[8px] font-black text-gray-500 uppercase tracking-widest px-1 mb-2">Recent Sales History</h4>
+                    <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1 mb-1">Recent Sales</h4>
                     {recentSales.map((sale) => (
-                      <div key={sale.id} className="p-1.5 bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 rounded flex items-center justify-between gap-1">
+                      <div key={sale.id} className="p-1 px-1.5 bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 rounded flex items-center justify-between gap-1">
                         <div className="min-w-0 flex-1">
-                          <p className="text-[9px] font-bold truncate dark:text-white">{sale.customerName}</p>
-                          <p className="text-[7px] text-gray-400 font-mono tracking-tighter capitalize">{sale.paymentMethod} • {new Date(sale.timestamp?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                          <p className="text-[12px] font-bold truncate dark:text-white">{sale.customerName}</p>
+                          <p className="text-[10px] text-gray-400 font-mono tracking-tighter capitalize leading-none">{sale.paymentMethod} • {new Date(sale.timestamp?.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                            {sale.currency === 'USD' ? '$' : ''}{sale.totalAmount.toLocaleString()}
+                        <div className="flex items-center gap-2">
+                          <p className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                            ${sale.totalAmount.toLocaleString()}
                           </p>
-                          <button onClick={() => { setLastSale(sale); setShowReceipt(true); }} className="p-1 text-gray-300 hover:text-indigo-500 transition-colors"><Receipt className="w-3 h-3" /></button>
+                          <button onClick={() => { setLastSale(sale); setShowReceipt(true); }} className="p-1 text-gray-300 hover:text-indigo-500 transition-colors bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 shadow-sm"><Receipt className="w-3 h-3" /></button>
                         </div>
                       </div>
                     ))}
-                    {recentSales.length === 0 && <p className="text-[8px] text-gray-400 text-center py-8 uppercase font-black tracking-widest">No Recent Sales</p>}
+                    {recentSales.length === 0 && <p className="text-[10px] text-gray-400 text-center py-4 uppercase font-black tracking-widest">No Sales</p>}
                   </div>
                 ) : cart.length > 0 ? (
                   cart.map((item) => (
-                    <div key={item.productId} className="flex items-center gap-1.5 bg-gray-50/50 dark:bg-gray-900/30 p-1 rounded-lg border border-gray-100/50 dark:border-gray-800/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold dark:text-white truncate">{item.name}</p>
-                        <p className="text-[8px] text-gray-400 font-mono">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
-                      </div>
-                      <div className="flex items-center gap-0.5 bg-white dark:bg-gray-700 rounded p-0.5 border border-gray-100 dark:border-gray-600">
-                        <button onClick={() => updateQuantity(item.productId, -1)} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Minus className="w-1.5 h-1.5" /></button>
-                        <span className="text-[9px] font-black w-3.5 text-center dark:text-white">{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.productId, 1)} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Plus className="w-1.5 h-1.5" /></button>
-                      </div>
-                      <button onClick={() => removeFromCart(item.productId)} className="text-gray-300 hover:text-red-500 p-0.5 transition-colors"><Trash2 className="w-2.5 h-2.5" /></button>
+                    <div key={item.productId} className="flex items-center gap-1 bg-gray-50/50 dark:bg-gray-900/30 p-1 rounded-md border border-gray-100/50 dark:border-gray-800/50">
+                       <div className="flex-1 min-w-0">
+                         <p className="text-[11px] font-bold dark:text-white whitespace-normal leading-tight">{item.name}</p>
+                         <p className="text-[10px] text-gray-400 font-mono">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
+                       </div>
+                       <div className="flex items-center gap-0.5 bg-white dark:bg-gray-700 rounded p-0.5 border border-gray-100 dark:border-gray-600 shrink-0">
+                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, -1); }} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Minus className="w-2 h-2 dark:text-gray-300" /></button>
+                         <input 
+                           type="number" 
+                           min="1"
+                           value={item.quantity} 
+                           onChange={(e) => setQuantity(item.productId, e.target.value)}
+                           className="text-[11px] font-black w-7 text-center dark:text-white bg-transparent border-none focus:ring-0 p-0" 
+                           onClick={(e) => e.stopPropagation()}
+                         />
+                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, 1); }} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Plus className="w-2 h-2 dark:text-gray-300" /></button>
+                       </div>
+                      <button onClick={(e) => { e.stopPropagation(); removeFromCart(item.productId); }} className="text-gray-300 hover:text-red-500 p-0.5 transition-colors shrink-0"><Trash2 className="w-3 h-3" /></button>
                     </div>
                   ))
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center opacity-20"><ShoppingCart className="w-4 h-4 mb-1" /><p className="text-[7px] font-bold uppercase tracking-widest text-center">Empty Basket</p></div>
+                  <div className="h-full flex flex-col items-center justify-center opacity-20 py-8"><ShoppingCart className="w-8 h-8 mb-1" /><p className="text-[10px] font-bold uppercase tracking-widest text-center">Empty</p></div>
                 )}
               </div>
             </div>
 
-            <div className="p-2 lg:p-3 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 space-y-1.5 shrink-0">
+            <div className="p-2 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 space-y-1.5 shrink-0 shadow-[0_-8px_20px_rgba(0,0,0,0.05)]">
               {isAdmin && todayStats && (
-                <div className="grid grid-cols-2 gap-1 bg-white dark:bg-gray-800 p-1 rounded border border-gray-100 dark:border-gray-700 shadow-inner">
+                <div className="grid grid-cols-2 gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-100 dark:border-gray-700 shadow-inner mb-0.5">
                   <div className="text-center border-r border-gray-100 dark:border-gray-700">
-                    <p className="text-[6px] font-black text-gray-400 uppercase tracking-tighter">Total USD</p>
-                    <p className="text-[9px] font-black text-green-600 dark:text-green-400 font-mono">${todayStats.usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                    <p className="text-[7.5px] font-black text-gray-400 uppercase tracking-tighter">Business USD</p>
+                    <p className="text-[12px] font-black text-green-600 dark:text-green-400 font-mono">${todayStats.usd.toLocaleString()}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-[6px] font-black text-gray-400 uppercase tracking-tighter">Total SSP</p>
-                    <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{todayStats.ssp.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                    <p className="text-[7.5px] font-black text-gray-400 uppercase tracking-tighter">Business SSP</p>
+                    <p className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{todayStats.ssp.toLocaleString()}</p>
                   </div>
                 </div>
               )}
               {error && (
-                <div className="p-1.5 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-lg flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[9px] font-bold animate-in fade-in">
-                  <AlertCircle className="w-2.5 h-2.5 shrink-0" />
-                  {error}
+                <div className="p-1.5 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-lg flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[11px] font-bold">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{error}</span>
                 </div>
               )}
-              <div className="space-y-0.5">
-                <div className="flex justify-between text-[9px] text-gray-500 dark:text-gray-400">
+              <div className="space-y-0.5 bg-white dark:bg-gray-800/50 p-1.5 rounded-xl border border-gray-100 dark:border-gray-700">
+                <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 font-medium items-center">
                   <span>Subtotal</span>
-                  <span className="dark:text-gray-200 font-mono font-bold">
+                  <span className="dark:text-gray-200 font-mono font-bold tracking-tight">
                     {currency === 'USD' ? '$' : ''}
-                    {subtotal.toLocaleString('en-US')}
+                    {subtotal.toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-[9px] text-red-500">
-                  <span>Discount</span>
-                  <div className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1 py-0">
-                    <span className="text-[7px] font-bold text-gray-400">{currency === 'USD' ? '$' : 'SSP'}</span>
+                <div className="flex justify-between items-center text-[11px] text-red-500 font-bold">
+                  <span className="text-[8.5px] font-black text-gray-400 uppercase tracking-widest leading-none">Disc</span>
+                  <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded h-5 px-1">
+                    <span className="text-[8.5px] font-black text-gray-400">{currency === 'USD' ? '$' : 'SSP'}</span>
                     <input 
                       type="number" 
                       min="0" 
                       step="0.01" 
-                      className="w-10 bg-transparent border-none focus:ring-0 p-0 text-right font-black text-[9px] dark:text-white" 
+                      className="w-10 bg-transparent border-none focus:ring-0 p-0 text-right font-black text-[12px] dark:text-white" 
                       value={discount || ''} 
                       onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))} 
                     />
                   </div>
                 </div>
-                <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-gray-200 dark:border-gray-700">
-                  <span className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-tighter">Total</span>
+                <div className="flex justify-between items-center pt-1 mt-0.5 border-t border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center gap-1">
+                    <span className={cn(
+                      "inline-block px-1 py-0.5 rounded-[3px] text-[7.5px] font-black uppercase tracking-widest leading-none",
+                      paymentMethod === 'credit' ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                    )}>
+                      {paymentMethod === 'credit' ? 'Debt' : 'Cash'}
+                    </span>
+                  </div>
                   <div className="text-right">
-                    <span className="text-sm lg:text-base font-black text-indigo-600 dark:text-indigo-400 block font-mono">
+                    <span className="text-base font-black text-indigo-600 dark:text-indigo-400 block font-mono leading-none tracking-tighter">
                       {isMixedPayment ? (
-                        `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
+                        `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                       ) : (
-                        `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString('en-US')}${currency === 'SSP' ? ' SSP' : ''}`
+                        `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}${currency === 'SSP' ? ' SSP' : ''}`
                       )}
                     </span>
                   </div>
@@ -755,18 +801,18 @@ export default function POS() {
                 disabled={cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer)}
                 onClick={handleCheckout}
                 className={cn(
-                  "w-full py-1.5 text-white rounded-lg font-black text-[11px] shadow-lg transition-all flex items-center justify-center gap-1.5",
+                  "w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-1.5 mt-auto shadow-md shadow-indigo-100 dark:shadow-none h-8",
                   (cart.length === 0 || isProcessing || (paymentMethod === 'credit' && !selectedCustomer))
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-indigo-600 shadow-indigo-100 hover:bg-indigo-700 active:scale-[0.98]"
+                    ? "opacity-50 grayscale cursor-not-allowed shadow-none"
+                    : paymentMethod === 'credit' ? "bg-amber-600 hover:bg-amber-700 shadow-amber-100" : ""
                 )}
               >
                 {isProcessing ? (
-                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    {paymentMethod === 'credit' && !selectedCustomer ? 'Select Customer' : (editingSaleId ? 'Update' : 'Check Out')}
+                    <span>{editingSaleId ? 'Update' : 'Confirm Sale'}</span>
                   </>
                 )}
               </button>
@@ -787,19 +833,19 @@ export default function POS() {
       <div className="flex items-center gap-3">
         <div className="relative">
           <ShoppingCart className="w-6 h-6" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-indigo-600 animate-pulse">
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[11px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-indigo-600 animate-pulse">
             {cart.length}
           </span>
         </div>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Review Order</p>
+          <p className="text-[12px] font-black uppercase tracking-widest opacity-70">Review Order</p>
           <p className="font-black text-sm">
             {cart.length === 1 ? '1 Item' : `${cart.length} Items`} Selected
           </p>
         </div>
       </div>
       <div className="text-right">
-        <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Total Amount</p>
+        <p className="text-[12px] font-black uppercase tracking-widest opacity-70">Total Amount</p>
         <p className="text-lg font-black">
           {isMixedPayment ? (
             `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
@@ -830,7 +876,7 @@ export default function POS() {
               <div className="space-y-2">
                 {lastSale.items.map((item: any, i: number) => (
                   <div key={i} className="flex justify-between text-sm">
-                    <span className="font-medium text-gray-700 truncate max-w-[150px]">{item.name}</span>
+                    <span className="font-medium text-gray-700 whitespace-normal leading-tight flex-1">{item.name}</span>
                     <span className="font-bold text-gray-900">
                       {item.quantity} x {lastSale.currency === 'USD' ? '$' : ''}
                       {(item.priceAtSale * (lastSale.exchangeRate || 1)).toLocaleString('en-US')}
@@ -853,7 +899,7 @@ export default function POS() {
                   </span>
                 </div>
                 {lastSale.exchangeRate && (
-                  <div className="flex justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                  <div className="flex justify-between text-[12px] text-gray-400 font-bold uppercase tracking-widest">
                     <span>Rate</span>
                     <span>1 USD = {lastSale.exchangeRate} SSP</span>
                   </div>
@@ -868,21 +914,27 @@ export default function POS() {
                     </span>
                   </div>
                 )}
-                  <div className="flex justify-between text-lg font-black pt-2 border-t border-gray-100">
-                    <span>Total Paid</span>
-                    <div className="text-right leading-tight">
-                      <span className="text-indigo-600 block">
+                  <div className="flex justify-between text-lg font-black pt-3 border-t border-gray-100 mt-2">
+                    <span className="text-gray-900">{lastSale.paymentMethod === 'credit' ? 'Total Credit' : 'Total Paid'}</span>
+                    <div className="text-right leading-none">
+                      <span className={cn(
+                        "block text-xl font-black",
+                        lastSale.paymentMethod === 'credit' ? "text-amber-600" : "text-indigo-600"
+                      )}>
                         {lastSale.isMixed ? (
-                          `$${(lastSale.amountUSD + (lastSale.amountSSP / (lastSale.exchangeRate || 1000))).toLocaleString('en-US')}`
+                          `$${(lastSale.amountUSD + (lastSale.amountSSP / (lastSale.exchangeRate || 1000))).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                         ) : (
-                          `${lastSale.currency === 'USD' ? '$' : ''}${lastSale.totalAmount.toLocaleString('en-US')} ${lastSale.currency === 'SSP' ? 'SSP' : ''}`
+                          `${lastSale.currency === 'USD' ? '$' : ''}${lastSale.totalAmount.toLocaleString(undefined, { minimumFractionDigits: lastSale.currency === 'USD' ? 2 : 0 })} ${lastSale.currency === 'SSP' ? 'SSP' : ''}`
                         )}
                       </span>
                       {lastSale.isMixed && (
-                        <div className="flex flex-col items-end mt-1 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-                          <span>${lastSale.amountUSD.toLocaleString('en-US')} Paid</span>
-                          <span>{lastSale.amountSSP.toLocaleString('en-US')} SSP Paid</span>
+                        <div className="flex flex-col items-end mt-1 text-[11px] font-black text-gray-400 uppercase tracking-tighter">
+                          <span>${lastSale.amountUSD.toLocaleString(undefined, { minimumFractionDigits: 2 })} Cash</span>
+                          <span>{lastSale.amountSSP.toLocaleString()} SSP Cash</span>
                         </div>
+                      )}
+                      {lastSale.paymentMethod === 'credit' && (
+                        <span className="text-[11px] font-black text-amber-500 uppercase tracking-widest block mt-1">Pending Payment</span>
                       )}
                     </div>
                   </div>

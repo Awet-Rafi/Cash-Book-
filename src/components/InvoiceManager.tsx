@@ -101,6 +101,8 @@ export default function InvoiceManager() {
       where('businessId', '==', businessId)
     ), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'customers');
     });
 
     // Fetch Sales (Invoices)
@@ -115,6 +117,8 @@ export default function InvoiceManager() {
         timestamp: safeTimestamp(doc.data().timestamp)
       } as Sale)));
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'sales');
     });
 
     return () => {

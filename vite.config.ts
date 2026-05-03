@@ -10,7 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.svg'],
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
       },
@@ -21,19 +21,19 @@ export default defineConfig({
         theme_color: '#4f46e5',
         icons: [
           {
-            src: 'https://ais-pre-omxcj6dlpjhy27czddn4wf-83624937983.europe-west3.run.app/favicon.ico',
+            src: 'favicon.svg',
             sizes: '64x64',
-            type: 'image/x-icon'
+            type: 'image/svg+xml'
           },
           {
-            src: 'https://ais-pre-omxcj6dlpjhy27czddn4wf-83624937983.europe-west3.run.app/favicon.ico',
+            src: 'favicon.svg',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/svg+xml'
           },
           {
-            src: 'https://ais-pre-omxcj6dlpjhy27czddn4wf-83624937983.europe-west3.run.app/favicon.ico',
+            src: 'favicon.svg',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/svg+xml'
           }
         ]
       }
@@ -50,5 +50,20 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui-vendor': ['lucide-react', 'motion', 'clsx', 'tailwind-merge'],
+          'data-vendor': ['xlsx', 'jspdf', 'jspdf-autotable', 'html2canvas', 'date-fns'],
+          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          'charts-vendor': ['recharts'],
+        },
+      },
+    },
   },
 });
