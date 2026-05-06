@@ -41,6 +41,20 @@
           console.log('Storage cleared via force reset flag');
         }
       })();
+
+      // POLYFILLS/SHIMS for restricted environments
+      window.global = window;
+      
+      // Prevent libraries from overriding fetch if it exists
+      const originalFetch = window.fetch;
+      if (originalFetch) {
+        Object.defineProperty(window, 'fetch', {
+          configurable: false,
+          enumerable: true,
+          get: () => originalFetch,
+          set: (v) => { console.warn('Something tried to override fetch:', v); }
+        });
+      }
     </script>
   </head>
   <body>

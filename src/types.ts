@@ -71,6 +71,11 @@ export interface Customer {
   initialBalanceCurrency?: Currency;
 }
 
+export interface Attachment {
+  url: string;
+  type: 'image' | 'pdf';
+}
+
 export interface Payment {
   id: string;
   businessId: string;
@@ -84,8 +89,7 @@ export interface Payment {
   exchangeRate?: number;
   timestamp: string;
   notes?: string;
-  attachmentUrl?: string;
-  attachmentType?: 'image' | 'pdf';
+  attachments?: Attachment[];
   isConfirmed?: boolean;
   status?: 'pending' | 'transferred';
   transferredAt?: string;

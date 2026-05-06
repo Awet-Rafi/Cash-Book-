@@ -1,26 +1,46 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth();
 
-// Enable offline persistence
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled
-      // in one tab at a time.
-      console.warn('Firestore persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      // The current browser does not support all of the
-      // features required to enable persistence
-      console.warn('Firestore persistence failed: Browser not supported');
+// Initialize Firestore
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const auth = getAuth(app);
+
+// Enable offline persistence IMMEDIATELY.
+// This MUST be the very first call to Firestore.
+// We use a self-executing function to ensure it runs during module load
+(async () => {
+  if (typeof window !== 'undefined') {
+    try {
+      await enableIndexedDbPersistence(db);
+      console.log("Firestore persistence enabled successfully.");
+    } catch (err: any) {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore persistence failed: Multiple tabs open');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore persistence failed: Browser not supported');
+      } else {
+        console.error('Firestore persistence error:', err);
+      }
     }
-  });
-}
+  }
+})();
+
+// Test connection lazily
+setTimeout(async () => {
+  try {
+    const { doc, getDocFromServer } = await import('firebase/firestore');
+    await getDocFromServer(doc(db, '_connection_test_', 'check'));
+    console.log("Firebase connection test successful.");
+  } catch (error: any) {
+    if (error?.message?.includes('the client is offline') || error?.code === 'unavailable') {
+      console.warn("Firebase connection failed: Client appears to be offline or blocked.");
+    }
+  }
+}, 3000);
 
 export enum OperationType {
   CREATE = 'create',

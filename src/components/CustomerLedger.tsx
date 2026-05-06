@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, updateDoc, doc, Timestamp, addDoc, serverTimestamp, deleteDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Sale, Customer, Payment, Expense, CashTransaction, Currency } from '../types';
+import { Sale, Customer, Payment, Expense, CashTransaction, Currency, Attachment } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { 
   Search, 
@@ -82,8 +82,7 @@ export default function CustomerLedger() {
   const [paymentAmountSSP, setPaymentAmountSSP] = useState('');
   const [paymentExchangeRate, setPaymentExchangeRate] = useState('1,000');
   const [paymentNotes, setPaymentNotes] = useState('');
-  const [paymentAttachment, setPaymentAttachment] = useState<string | null>(null);
-  const [paymentAttachmentType, setPaymentAttachmentType] = useState<'image' | 'pdf' | null>(null);
+  const [paymentAttachments, setPaymentAttachments] = useState<Attachment[]>([]);
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -286,6 +285,17 @@ export default function CustomerLedger() {
     };
   }, [businessId]);
 
+  useEffect(() => {
+    if (expandedCustomer || isPaymentModalOpen || viewingCashCurrency || previewUrl || isManualModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [expandedCustomer, isPaymentModalOpen, viewingCashCurrency, previewUrl, isManualModalOpen]);
+
   const handleInlineAdd = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newInlineName.trim() || isSubmittingCustomer || !businessId) return;
@@ -358,8 +368,7 @@ export default function CustomerLedger() {
         amountSSP: ssp,
         exchangeRate: rate,
         notes: paymentNotes || '',
-        attachmentUrl: paymentAttachment || null,
-        attachmentType: paymentAttachmentType || null,
+        attachments: paymentAttachments,
         timestamp: paymentDate ? new Date(paymentDate).getTime() : new Date().getTime(),
         status: 'pending',
         isConfirmed: false
@@ -381,8 +390,7 @@ export default function CustomerLedger() {
       setPaymentAmountSSP('');
       setPaymentNotes('');
       setPaymentDate(new Date().toISOString().split('T')[0]);
-      setPaymentAttachment(null);
-      setPaymentAttachmentType(null);
+      setPaymentAttachments([]);
       setEditingPaymentId(null);
     } catch (error) {
       console.error("Error recording payment:", error);
@@ -409,8 +417,7 @@ export default function CustomerLedger() {
       setPaymentExchangeRate(item.exchangeRate?.toString() || '1000');
       setPaymentNotes(item.notes || '');
       setPaymentDate(item.timestamp ? new Date(item.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-      setPaymentAttachment(item.attachmentUrl || null);
-      setPaymentAttachmentType(item.attachmentType || null);
+      setPaymentAttachments(item.attachments || []);
       setEditingPaymentId(item.id);
       setIsPaymentModalOpen(true);
     } else if (item.collection === 'sales') {
@@ -444,8 +451,7 @@ export default function CustomerLedger() {
         setPaymentExchangeRate(p.exchangeRate?.toString() || '1000');
         setPaymentNotes(p.notes || '');
         setPaymentDate(p.timestamp ? new Date(p.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-        setPaymentAttachment(p.attachmentUrl || null);
-        setPaymentAttachmentType(p.attachmentType || null);
+        setPaymentAttachments(p.attachments || []);
         setEditingPaymentId(p.id);
         setIsPaymentModalOpen(true);
       }
@@ -466,20 +472,36 @@ export default function CustomerLedger() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    if (file.size > 800000) { // ~800KB limit to stay safe with Firestore 1MB limit
-      alert('File is too large. Please select a file smaller than 800KB.');
+    if (paymentAttachments.length + files.length > 4) {
+      alert('You can only add up to 4 attachments.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPaymentAttachment(reader.result as string);
-      setPaymentAttachmentType(file.type.includes('pdf') ? 'pdf' : 'image');
-    };
-    reader.readAsDataURL(file);
+    Array.from(files).forEach(file => {
+      if (file.size > 800000) { // ~800KB limit
+        alert(`File ${file.name} is too large. Please select a file smaller than 800KB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPaymentAttachments(prev => [
+          ...prev,
+          {
+            url: reader.result as string,
+            type: file.type.includes('pdf') ? 'pdf' : 'image'
+          }
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeAttachment = (index: number) => {
+    setPaymentAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   const exportToPDF = (customer: any, transactions: any[]) => {
@@ -599,7 +621,7 @@ export default function CustomerLedger() {
         }, 0);
 
       const totalRepayments = customerPayments
-        .filter(p => !p.status || p.status === 'transferred' || p.isConfirmed)
+        .filter(p => !p.status || p.status === 'transferred' || p.status === 'pending' || p.isConfirmed)
         .reduce((acc, p) => {
           const reductionUSD = p.creditDeductionUSD ?? (p.currency === 'SSP' ? (p.amount / (p.exchangeRate || 1000)) : p.amount);
           return acc + reductionUSD;
@@ -683,19 +705,26 @@ export default function CustomerLedger() {
         if (viewingCashCurrency === 'USD') return (p.amountUSD !== undefined ? p.amountUSD > 0 : p.currency === 'USD');
         if (viewingCashCurrency === 'SSP') return (p.amountSSP !== undefined ? p.amountSSP > 0 : p.currency === 'SSP');
         return false;
-      }).map(p => ({
-        id: p.id,
-        timestamp: p.timestamp,
-        customerName: p.customerName,
-        amount: p.amount,
-        type: 'Repayment',
-        isCashIn: true,
-        notes: `Repayment from ${p.customerName}`,
-        collection: 'payments',
-        customerId: p.customerId,
-        status: p.status || 'transferred',
-        originalData: p
-      })),
+      }).map(p => {
+        const isUSD = viewingCashCurrency === 'USD';
+        const displayAmount = isUSD 
+          ? (p.amountUSD || (p.currency === 'USD' ? p.amount : 0))
+          : (p.amountSSP || (p.currency === 'SSP' ? p.amount : 0));
+          
+        return {
+          id: p.id,
+          timestamp: p.timestamp,
+          customerName: p.customerName,
+          amount: displayAmount,
+          type: 'Repayment',
+          isCashIn: true,
+          notes: `Repayment from ${p.customerName}`,
+          collection: 'payments',
+          customerId: p.customerId,
+          status: p.status || 'pending',
+          originalData: p
+        };
+      }),
       ...expenses.filter(e => (e.currency === viewingCashCurrency) || (viewingCashCurrency === 'USD' && !e.currency)).map(e => ({
         id: e.id,
         timestamp: e.timestamp,
@@ -760,22 +789,22 @@ export default function CustomerLedger() {
   const cashInHandSSP = (() => {
     const cashSalesSSP = allSales.filter(s => 
       (s.paymentMethod === 'cash' || s.status === 'paid') && 
-      s.currency === 'SSP'
+      s.currency === 'SSP' && s.isConfirmed
     ).reduce((acc, s) => acc + s.totalAmount, 0);
 
     const repaymentsSSP = payments.filter(p => 
-      ((p.currency === 'SSP' || (p.amountSSP || 0) > 0)) && (p.status === 'transferred' || !p.status)
+      ((p.currency === 'SSP' || (p.amountSSP || 0) > 0)) && (p.status === 'transferred' || p.isConfirmed)
     ).reduce((acc, p) => {
       if ((p.amountSSP || 0) > 0) return acc + p.amountSSP!;
       return p.currency === 'SSP' ? acc + p.amount : acc;
     }, 0);
 
     const totalSSPExpenses = expenses.filter(e => 
-      e.currency === 'SSP'
+      e.currency === 'SSP' && e.isConfirmed
     ).reduce((acc, e) => acc + e.amount, 0);
 
     const manualSSP = cashTransactions.filter(t => 
-      t.currency === 'SSP'
+      t.currency === 'SSP' && t.isConfirmed
     ).reduce((acc, t) => t.type === 'in' ? acc + t.amount : acc - t.amount, 0);
 
     return (cashSalesSSP + repaymentsSSP + manualSSP) - totalSSPExpenses;
@@ -784,22 +813,22 @@ export default function CustomerLedger() {
   const cashInHandUSD = (() => {
     const cashSalesUSD = allSales.filter(s => 
       (s.paymentMethod === 'cash' || s.status === 'paid') && 
-      s.currency === 'USD'
+      s.currency === 'USD' && s.isConfirmed
     ).reduce((acc, s) => acc + s.totalAmount, 0);
 
     const repaymentsUSD = payments.filter(p => 
-      ((p.currency === 'USD' || (p.amountUSD || 0) > 0)) && (p.status === 'transferred' || !p.status)
+      ((p.currency === 'USD' || (p.amountUSD || 0) > 0)) && (p.status === 'transferred' || p.isConfirmed)
     ).reduce((acc, p) => {
       if ((p.amountUSD || 0) > 0) return acc + p.amountUSD!;
       return p.currency === 'USD' ? acc + p.amount : acc;
     }, 0);
 
     const totalUSDExpenses = expenses.filter(e => 
-      (e.currency === 'USD' || !e.currency)
+      (e.currency === 'USD' || !e.currency) && e.isConfirmed
     ).reduce((acc, e) => acc + e.amount, 0);
 
     const manualUSD = cashTransactions.filter(t => 
-      t.currency === 'USD'
+      t.currency === 'USD' && t.isConfirmed
     ).reduce((acc, t) => t.type === 'in' ? acc + t.amount : acc - t.amount, 0);
 
     return (cashSalesUSD + repaymentsUSD + manualUSD) - totalUSDExpenses;
@@ -897,9 +926,9 @@ export default function CustomerLedger() {
   </div>;
 
   return (
-    <div className="space-y-6 pb-32 transition-colors duration-300">
+    <div className="space-y-6 pb-32 transition-colors duration-300 max-w-full overflow-x-hidden overscroll-x-contain touch-pan-y">
       {/* Sticky Upper Level Balance Summary */}
-      <div className="sticky top-0 z-30 pt-2 pb-2 sm:pt-3 sm:pb-3 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-gray-100 dark:border-gray-800">
+      <div className="sticky top-0 z-30 pt-2 pb-2 sm:pt-3 sm:pb-3 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6">
         
         {/* Mobile Version - Compact Grid */}
         <div className="md:hidden flex flex-col gap-1.5 max-w-7xl mx-auto">
@@ -1072,11 +1101,6 @@ export default function CustomerLedger() {
         {filteredCustomerCredits.map((customer) => (
           <motion.div 
             key={customer.id}
-            layout
-            whileHover={{ scale: 1.01, y: -2, zIndex: 10 }}
-            transition={{ 
-              layout: { type: "spring", stiffness: 300, damping: 30 }
-            }}
             className={cn(
               "bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm relative group",
               "hover:border-indigo-100 dark:hover:border-indigo-900 hover:shadow-md",
@@ -1088,7 +1112,6 @@ export default function CustomerLedger() {
             <div 
               onClick={() => {
                 setExpandedCustomer(customer.id);
-                window.scrollTo({ top: 0, behavior: 'instant' });
               }}
               className="p-1 sm:p-2 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors rounded-2xl"
             >
@@ -1264,7 +1287,7 @@ export default function CustomerLedger() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: '100%' }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-0 z-[200] bg-[#f8f9fc] dark:bg-gray-900 flex flex-col h-screen w-screen overflow-hidden"
+              className="fixed inset-0 z-[200] bg-[#f8f9fc] dark:bg-gray-900 flex flex-col h-full w-full overflow-hidden"
             >
               {/* Responsive Header */}
               {isDesktop ? (
@@ -1397,7 +1420,7 @@ export default function CustomerLedger() {
                           className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-xl text-sm placeholder-gray-400 focus:ring-0 shadow-sm"
                         />
                       </div>
-                      <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 px-4 scrollbar-hide">
                         <button className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm shrink-0 border border-transparent">
                           <Filter className="w-4 h-4 text-[#4c6ef5]" />
                         </button>
@@ -1548,11 +1571,15 @@ export default function CustomerLedger() {
                                 <th className="px-6 text-center">Receipt</th>
                                 <th className="px-6 text-right">Debit / Credit</th>
                                 <th className="px-8 text-right bg-[#fcfcfc] dark:bg-gray-900/10 whitespace-nowrap">Running Balance</th>
+                                <th className="px-6 text-right w-20">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                               {(() => {
-                                let currentRunning = 0;
+                                const initialBalanceUSD = customer.initialBalanceCurrency === 'SSP' 
+                                  ? (customer.initialBalance || 0) / 1000 
+                                  : (customer.initialBalance || 0);
+                                let currentRunning = initialBalanceUSD;
                                 const sorted = [...transactions].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                                 const computed = sorted.map(item => {
                                   const val = (item.creditDeductionUSD ?? (item.amount || item.totalAmount));
@@ -1592,23 +1619,61 @@ export default function CustomerLedger() {
                                       </div>
                                     </td>
                                     <td className="px-6 text-center">
-                                      <div className="flex items-center justify-center gap-3">
-                                        {item.attachmentUrl && (
+                                      <div className="flex items-center justify-center gap-1.5 flex-wrap max-w-[100px]">
+                                        {(item.attachments || (item.attachmentUrl ? [{ url: item.attachmentUrl, type: item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image') }] : [])).map((att: any, i: number) => (
                                           <button 
+                                            key={i}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setPreviewUrl(item.attachmentUrl);
-                                              setPreviewType(item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image'));
+                                              setPreviewUrl(att.url);
+                                              setPreviewType(att.type);
                                             }}
                                             className="p-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors group"
+                                            title={`View Attachment ${i + 1}`}
                                           >
-                                            <ImageIcon className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600" />
+                                            {att.type === 'pdf' ? <FileText className="w-3.5 h-3.5 text-red-400 group-hover:text-red-600" /> : <ImageIcon className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600" />}
                                           </button>
-                                        )}
+                                        ))}
                                       </div>
                                     </td>
                                     <td className="px-6 text-right"><span className={cn("text-[14px] font-bold font-mono", item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]")}>{item.isPayment || item.isExpense ? '-' : '+'}{(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}</span></td>
-                                    <td className="px-8 text-right bg-[#fcfcfc] dark:bg-gray-900/10"><span className="text-[13px] font-bold font-mono text-gray-500">{item.bal.toLocaleString()}</span></td>
+                                    <td className="px-8 text-right bg-[#fcfcfc] dark:bg-gray-900/10">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[13px] font-bold font-mono text-gray-500">{item.bal.toLocaleString()}</span>
+                                        {item.updatedAt && (
+                                          <span className="text-[9px] font-bold text-gray-400 italic">(Edited)</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-6 text-right">
+                                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditTransaction(item, customer);
+                                          }}
+                                          className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all"
+                                          title="Edit Entry"
+                                        >
+                                          <Edit3 className="w-4 h-4" />
+                                        </button>
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDeleteTransactionInfo({ 
+                                              id: item.id, 
+                                              collection: item.collection, 
+                                              type: item.isPayment ? 'Payment' : item.isExpense ? 'Expense' : 'Sale',
+                                              customerId: customer.id
+                                            });
+                                          }}
+                                          className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-all"
+                                          title="Delete Entry"
+                                        >
+                                          <Trash className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </td>
                                   </tr>
                                   ));
                               })()}
@@ -1620,7 +1685,10 @@ export default function CustomerLedger() {
                       /* Mobile List (Grouped by Date) */
                       <div className="space-y-6">
                         {(() => {
-                          let currentRunning = 0;
+                          const initialBalanceUSD = customer.initialBalanceCurrency === 'SSP' 
+                            ? (customer.initialBalance || 0) / 1000 
+                            : (customer.initialBalance || 0);
+                          let currentRunning = initialBalanceUSD;
                           const sorted = [...transactions].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                           const computed = sorted.map(item => {
                             const val = (item.creditDeductionUSD ?? (item.amount || item.totalAmount));
@@ -1653,29 +1721,62 @@ export default function CustomerLedger() {
                                       <p className="text-[13px] font-medium text-gray-900 dark:text-white leading-tight">
                                         {item.notes || (item.isPayment ? 'Repayment Settlement' : item.isExpense ? 'Operational Expense' : (item.items?.[0]?.name || 'Direct Credit Sale Account'))}
                                       </p>
-                                      {item.attachmentUrl && (
+                                      <div className="flex flex-wrap gap-2 mt-1">
+                                        {(item.attachments || (item.attachmentUrl ? [{ url: item.attachmentUrl, type: item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image') }] : [])).map((att: any, i: number) => (
+                                          <button 
+                                            key={i}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setPreviewUrl(att.url);
+                                              setPreviewType(att.type);
+                                            }}
+                                            className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase tracking-wider"
+                                          >
+                                            {att.type === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                            {att.type === 'pdf' ? 'PDF' : 'Bill'} {i + 1}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <p className="text-[11px] font-medium text-[#4c6ef5]">Entry by You <span className="text-gray-400 font-normal ml-1">at {format(parseISO(item.timestamp), 'h:mm a')}</span></p>
+                                    </div>
+                                    <div className="text-right shrink-0 flex flex-col items-end gap-2">
+                                      <div>
+                                        <p className={cn(
+                                          "text-base font-black leading-none mb-1",
+                                          item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]"
+                                        )}>
+                                          {(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}
+                                        </p>
+                                        <p className="text-[10px] font-medium text-gray-400">Balance: {item.bal.toLocaleString()}</p>
+                                        {item.updatedAt && (
+                                          <p className="text-[9px] font-bold text-gray-400 italic mt-0.5">(Edited)</p>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3">
                                         <button 
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            setPreviewUrl(item.attachmentUrl);
-                                            setPreviewType(item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image'));
+                                            handleEditTransaction(item, customer);
                                           }}
-                                          className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase tracking-wider"
+                                          className="p-2 text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl active:bg-indigo-100"
                                         >
-                                          <ImageIcon className="w-3 h-3" />
-                                          View Bill
+                                          <Edit3 className="w-4 h-4" />
                                         </button>
-                                      )}
-                                      <p className="text-[11px] font-medium text-[#4c6ef5]">Entry by You <span className="text-gray-400 font-normal ml-1">at {format(parseISO(item.timestamp), 'h:mm a')}</span></p>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <p className={cn(
-                                        "text-base font-black leading-none mb-1",
-                                        item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]"
-                                      )}>
-                                        {(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}
-                                      </p>
-                                      <p className="text-[10px] font-medium text-gray-400">Balance: {item.bal.toLocaleString()}</p>
+                                        <button 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDeleteTransactionInfo({ 
+                                              id: item.id, 
+                                              collection: item.collection, 
+                                              type: item.isPayment ? 'Payment' : item.isExpense ? 'Expense' : 'Sale',
+                                              customerId: customer.id
+                                            });
+                                          }}
+                                          className="p-2 text-rose-400 bg-rose-50 dark:bg-rose-900/30 rounded-xl active:bg-rose-100"
+                                        >
+                                          <Trash className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 ))}
@@ -1730,18 +1831,18 @@ export default function CustomerLedger() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 z-[401] w-full max-w-[500px] bg-white dark:bg-gray-900 shadow-2xl flex flex-col h-full"
+              className="fixed right-0 top-0 bottom-0 z-[401] w-full max-w-[500px] bg-slate-900 shadow-2xl flex flex-col h-full"
             >
               {/* Header */}
-              <div className="px-6 py-5 border-b dark:border-gray-800 flex items-center justify-between">
-                <h2 className="text-[20px] font-bold text-indigo-600 dark:text-indigo-400">
+              <div className="px-6 py-5 border-b border-white/20 flex items-center justify-between">
+                <h2 className="text-[20px] font-bold text-white">
                   Add Ledger Entry
                 </h2>
                 <button 
                   onClick={() => setIsPaymentModalOpen(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
                 >
-                  <X className="w-6 h-6 text-gray-500" />
+                  <X className="w-6 h-6 text-white" />
                 </button>
               </div>
 
@@ -1751,13 +1852,17 @@ export default function CustomerLedger() {
                 <div className="flex gap-2">
                   <button 
                     type="button"
-                    className="flex-1 py-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-200 dark:border-indigo-800 shadow-sm"
+                    onClick={() => {
+                      setIsPaymentModalOpen(false);
+                      navigate('/pos', { state: { customerId: selectedCustomerForPayment?.id } });
+                    }}
+                    className="flex-1 py-4 bg-green-600 text-white rounded-xl text-xs font-black uppercase tracking-widest border border-white/30 shadow-sm"
                   >
-                    New Sale
+                    POS / Sales
                   </button>
                   <button 
                     type="button"
-                    className="flex-1 py-3 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 border dark:border-gray-700 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="flex-1 py-4 bg-red-600 text-white border border-white/30 rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-opacity"
                   >
                     Payment
                   </button>
@@ -1766,30 +1871,30 @@ export default function CustomerLedger() {
                 {/* Date & Time Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                      Date <span className="text-red-500">*</span>
+                    <label className="text-[12px] font-bold text-white flex items-center gap-1">
+                      Date <span className="text-red-400">*</span>
                     </label>
                     <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500" />
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
                       <input 
                         type="date"
-                        className="w-full pl-12 pr-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                        className="w-full pl-12 pr-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
                         value={paymentDate}
                         onChange={e => setPaymentDate(e.target.value)}
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300">
+                    <label className="text-[12px] font-bold text-white">
                       Time
                     </label>
                     <div className="relative">
-                      <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500" />
+                      <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
                       <input 
                         type="text"
                         readOnly
                         value={format(new Date(), 'hh:mm a')}
-                        className="w-full pl-12 pr-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                        className="w-full pl-12 pr-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
                       />
                     </div>
                   </div>
@@ -1797,16 +1902,16 @@ export default function CustomerLedger() {
 
                 {/* Amount Field */}
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
-                    <span>Amount <span className="text-red-500">*</span></span>
-                    <AlertCircle className="w-4 h-4 text-gray-400 cursor-help" />
+                  <label className="text-[12px] font-bold text-white flex items-center justify-between">
+                    <span>Amount <span className="text-red-400">*</span></span>
+                    <AlertCircle className="w-4 h-4 text-white/50 cursor-help" />
                   </label>
                   <div className="relative">
                     <input 
                       type="text" 
                       inputMode="decimal"
-                      placeholder="890 or 100 + 200*3"
-                      className="w-full px-4 h-12 bg-white dark:bg-gray-900 border-2 border-indigo-500 rounded-lg focus:ring-0 outline-none transition-all font-bold text-base text-indigo-600 placeholder:text-gray-300"
+                      placeholder="0"
+                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-0 outline-none transition-all font-bold text-base text-white placeholder:text-white/30"
                       value={paymentAmountUSD}
                       onChange={e => setPaymentAmountUSD(formatInputNumber(e.target.value))}
                     />
@@ -1816,26 +1921,26 @@ export default function CustomerLedger() {
                 {/* Exchange Rate (SSP Mode) */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5 col-span-1">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="text-[12px] font-bold text-white mb-1">
                       Amount SSP (Optional)
                     </label>
                     <input 
                       type="text" 
                       inputMode="numeric"
                       placeholder="0"
-                      className="w-full px-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white placeholder:text-white/30"
                       value={paymentAmountSSP}
                       onChange={e => setPaymentAmountSSP(formatInputNumber(e.target.value))}
                     />
                   </div>
                   <div className="space-y-1.5 col-span-1">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="text-[12px] font-bold text-white mb-1">
                       Exchange Rate (1 USD = ?)
                     </label>
                     <input 
                       type="text" 
                       inputMode="numeric"
-                      className="w-full px-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm"
+                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
                       value={paymentExchangeRate}
                       onChange={e => setPaymentExchangeRate(formatInputNumber(e.target.value))}
                     />
@@ -1844,145 +1949,118 @@ export default function CustomerLedger() {
 
                 {/* Contact Name */}
                 <div className="space-y-1.5 text-left">
-                  <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                  <label className="text-[12px] font-bold text-white flex items-center justify-between">
                     Contact Name
-                    <Shield className="w-4 h-4 text-indigo-500 cursor-pointer" />
+                    <Shield className="w-4 h-4 text-white/70 cursor-pointer" />
                   </label>
                   <div className="relative group">
-                    <div className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg font-bold text-sm text-gray-900 dark:text-white flex items-center justify-between">
+                    <div className="w-full px-4 py-3 bg-transparent border-2 border-white rounded-lg font-bold text-sm text-white flex items-center justify-between">
                       {selectedCustomerForPayment.name}
-                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                      <ChevronDown className="w-5 h-5 text-white/70" />
                     </div>
                   </div>
                 </div>
 
                 {/* Remarks */}
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300">
+                  <label className="text-[12px] font-bold text-white">
                     Remarks
                   </label>
                   <textarea 
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm h-24 resize-none"
+                    className="w-full px-4 py-3 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all text-sm h-24 resize-none text-white placeholder:text-white/30"
                     placeholder="Enter Details (Name, Bill No, Item Name, Quantity etc)"
                     value={paymentNotes}
                     onChange={e => setPaymentNotes(e.target.value)}
                   />
                 </div>
 
-                {/* Category & Payment Mode Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
-                      Category
-                      <Shield className="w-3.5 h-3.5 text-indigo-500" />
-                    </label>
-                    <div className="w-full px-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg font-bold text-sm text-gray-900 dark:text-white flex items-center justify-between cursor-not-allowed opacity-70">
-                      Search or Select <ChevronDown className="w-4 h-4 text-gray-400" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
-                      Payment Mode
-                      <Shield className="w-3.5 h-3.5 text-indigo-500" />
-                    </label>
-                    <div className="w-full px-4 h-12 bg-gray-50 dark:bg-gray-800/50 border dark:border-gray-700 rounded-lg font-bold text-sm text-gray-900 dark:text-white flex items-center justify-between cursor-not-allowed opacity-70">
-                      Search or Select <ChevronDown className="w-4 h-4 text-gray-400" />
-                    </div>
-                  </div>
-                </div>
-
                 {/* Attach Bills */}
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-[12px] font-bold text-gray-700 dark:text-gray-300">
-                      Attachments
+                    <label className="text-[12px] font-bold text-white">
+                      Attachments ({paymentAttachments.length}/4)
                     </label>
-                    {paymentAttachment && (
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setPaymentAttachment(null);
-                          setPaymentAttachmentType(null);
-                        }}
-                        className="text-[10px] font-bold text-red-500 uppercase tracking-wider hover:underline"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </div>
                   
-                  <div className="flex items-start gap-4">
-                    <div className="flex-1">
-                      <input 
-                        type="file" 
-                        accept="image/*,.pdf"
-                        onChange={handleFileChange}
-                        className="hidden"
-                        id="payment-attachment"
-                      />
-                      <label 
-                        htmlFor="payment-attachment"
-                        className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50/50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all cursor-pointer group"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Paperclip className="w-6 h-6 text-gray-400 group-hover:text-indigo-500 mb-2 transition-colors" />
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                            {paymentAttachment ? "Change File" : "Upload Bills"}
-                          </p>
-                        </div>
-                      </label>
-                    </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Upload Box (Only show if less than 4) */}
+                    {paymentAttachments.length < 4 && (
+                      <div className="col-span-1">
+                        <input 
+                          type="file" 
+                          accept="image/*,.pdf"
+                          multiple
+                          onChange={handleFileChange}
+                          className="hidden"
+                          id="payment-attachment"
+                        />
+                        <label 
+                          htmlFor="payment-attachment"
+                          className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-white/30 rounded-xl bg-white/5 hover:bg-white/10 transition-all cursor-pointer group"
+                        >
+                          <div className="flex flex-col items-center justify-center">
+                            <Plus className="w-5 h-5 text-white/50 group-hover:text-white mb-1 transition-colors" />
+                            <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider text-center px-2">
+                              Add File
+                            </p>
+                          </div>
+                        </label>
+                      </div>
+                    )}
 
-                    {paymentAttachment && (
-                      <div className="w-24 h-24 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 shadow-sm relative group shrink-0">
-                        {paymentAttachmentType === 'pdf' ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-red-50 dark:bg-red-900/20">
-                            <FileText className="w-8 h-8 text-red-500" />
-                            <span className="text-[8px] font-bold text-red-600 uppercase mt-1">PDF Document</span>
+                    {/* Previews */}
+                    {paymentAttachments.map((att, index) => (
+                      <div key={index} className="w-full h-24 rounded-xl border border-white/20 overflow-hidden bg-white/10 shadow-sm relative group shrink-0">
+                        {att.type === 'pdf' ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-red-900/20">
+                            <FileText className="w-6 h-6 text-red-500" />
+                            <span className="text-[8px] font-bold text-red-400 uppercase mt-1">PDF</span>
                           </div>
                         ) : (
                           <img 
-                            src={paymentAttachment} 
-                            alt="Attachment Preview" 
+                            src={att.url} 
+                            alt={`Attachment ${index + 1}`} 
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                           />
                         )}
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setPreviewUrl(paymentAttachment);
-                            setPreviewType(paymentAttachmentType);
-                          }}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                        >
-                          <Eye className="w-6 h-6 text-white" />
-                        </button>
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setPreviewUrl(att.url);
+                              setPreviewType(att.type);
+                            }}
+                            className="p-1.5 bg-white/20 hover:bg-white/40 rounded-full transition-colors"
+                          >
+                            <Eye className="w-4 h-4 text-white" />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => removeAttachment(index)}
+                            className="p-1.5 bg-red-500/50 hover:bg-red-500 rounded-full transition-colors"
+                          >
+                            <X className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
+                </div>
+
+                {/* Footer and Submit Button moved inside form to enable Enter key submission */}
+                <div className="pt-4 border-t border-white/10 flex bg-slate-950 -mx-6 px-6 pb-2">
+                  <button 
+                    type="submit"
+                    disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
+                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-base uppercase tracking-[0.2em] transition-all disabled:opacity-50 active:scale-[0.98] shadow-lg shadow-indigo-900/20"
+                  >
+                    {isSubmittingPayment ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
               </form>
 
-              {/* Footer */}
-              <div className="px-6 py-4 border-t dark:border-gray-800 flex gap-3 bg-gray-50/50 dark:bg-gray-800/30">
-                <button 
-                  type="button"
-                  disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
-                  className="flex-1 h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-sm transition-all disabled:opacity-50 active:scale-95 shadow-sm"
-                  onClick={handleRecordPayment}
-                >
-                  {isSubmittingPayment ? 'Saving...' : 'Save & Add New'}
-                </button>
-                <button 
-                  type="button"
-                  onClick={handleRecordPayment}
-                  disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
-                  className="w-24 h-11 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold text-sm rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-all disabled:opacity-50 active:scale-95"
-                >
-                  Save
-                </button>
-              </div>
+              {/* Removed old footer div outside form */}
             </motion.div>
           </>
         )}

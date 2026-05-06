@@ -52,7 +52,7 @@ const Login = () => {
         return;
       }
       if (err.code === 'auth/network-request-failed') {
-        setError("Network error: Please check your internet connection and ensure no ad-blockers are blocking Google services.");
+        setError("Network error: Please check your connection. If using an ad-blocker or 'Incognito', try disabling them. Also, try opening the app in a new tab.");
         setLoading(false);
         return;
       }
@@ -131,7 +131,7 @@ const Login = () => {
         message = "This email is already registered. We've switched you to the login screen.";
         setView('login');
       } else if (err.code === 'auth/network-request-failed') {
-        message = "Network error: Please check your internet connection and ensure no ad-blockers are blocking Google services.";
+        message = "Network error: Please check your connection. If using an ad-blocker or 'Incognito', try disabling them. Also, try opening the app in a new tab.";
       } else if (err.code === 'auth/weak-password') {
         message = "Password should be at least 6 characters.";
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
