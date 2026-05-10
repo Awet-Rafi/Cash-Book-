@@ -205,14 +205,28 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       )}>
         <div className="h-full flex flex-col">
           <div className="p-6 flex items-center gap-3 border-b border-gray-100 dark:border-gray-700">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">
-              <Box className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg border border-white/5 overflow-hidden">
+              <svg viewBox="0 0 512 512" className="w-7 h-7">
+                <defs>
+                  <linearGradient id="gold-sidebar-refined" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style={{stopColor:'#FDE68A',stopOpacity:1}} />
+                    <stop offset="20%" style={{stopColor:'#B45309',stopOpacity:1}} />
+                    <stop offset="50%" style={{stopColor:'#FDE68A',stopOpacity:1}} />
+                    <stop offset="80%" style={{stopColor:'#92400E',stopOpacity:1}} />
+                    <stop offset="100%" style={{stopColor:'#78350F',stopOpacity:1}} />
+                  </linearGradient>
+                </defs>
+                <g fill="url(#gold-sidebar-refined)">
+                  <path d="M175 125h110c60 0 85 30 85 75s-25 75-85 75h-25v30c40 15 80 50 140 105-30-10-70-40-140-55v55 c0 20 15 25 35 25h15v15h-150v-15h15c20 0 35-5 35-25V165c0-20-15-25-35-25h-15v-15z M260 250c30 0 45-15 45-37s-15-37-45-37h-25v74h25z" />
+                  <path d="M140 230c100-15 150 40 300 180-80-40-140-90-300-35z" />
+                </g>
+              </svg>
             </div>
             <div>
-              <h1 className="font-bold text-gray-900 dark:text-white leading-tight truncate max-w-[150px]">
-                {businessName || 'Mini ERP'}
+              <h1 className="font-black text-gray-900 dark:text-white leading-tight truncate max-w-[150px] tracking-tighter uppercase italic">
+                {businessName || 'RAFI'}
               </h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Store Management</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Workspace</p>
             </div>
           </div>
 
@@ -327,7 +341,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             </button>
             
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-              {allNavItems.find(i => i.path === location.pathname)?.name || 'Mini ERP'}
+              {allNavItems.find(i => i.path === location.pathname)?.name || 'RAFI'}
             </h2>
           </div>
 

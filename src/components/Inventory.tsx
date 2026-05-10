@@ -67,8 +67,9 @@ export default function Inventory() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin || !businessId) return;
+    if (!isAdmin || !businessId || isProcessing) return;
 
+    setIsProcessing(true);
     const data = {
       businessId,
       name: formData.name,
@@ -116,6 +117,8 @@ export default function Inventory() {
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error saving product:", error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 

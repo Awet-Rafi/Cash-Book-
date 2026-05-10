@@ -12,14 +12,11 @@ import {
 import { auth } from '../../lib/firebase';
 import { 
   Box, 
-  ShoppingCart, 
-  Package, 
-  BarChart3, 
-  ShieldCheck, 
   AlertCircle, 
-  Mail, 
-  Lock, 
-  User as UserIcon2 
+  ShieldCheck,
+  ArrowRight,
+  Github,
+  Chrome
 } from 'lucide-react';
 
 const Login = () => {
@@ -31,16 +28,12 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleGoogleLogin = async () => {
     setError(null);
     setSuccess(null);
     setLoading(true);
-
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    if (isSafari) {
-      console.warn("Safari detected. If login fails, disable 'Prevent Cross-Site Tracking' in Settings.");
-    }
 
     const provider = new GoogleAuthProvider();
     try {
@@ -51,13 +44,7 @@ const Login = () => {
         setLoading(false);
         return;
       }
-      if (err.code === 'auth/network-request-failed') {
-        setError("Network error: Please check your connection. If using an ad-blocker or 'Incognito', try disabling them. Also, try opening the app in a new tab.");
-        setLoading(false);
-        return;
-      }
-      console.error("Login error:", err);
-      setError(err.message || "Failed to sign in. Please try again.");
+      setError(err.message || "Failed to sign in with Google.");
       setLoading(false);
     }
   };
@@ -76,23 +63,10 @@ const Login = () => {
 
     try {
       await sendPasswordResetEmail(auth, email);
-      setSuccess("Password reset email sent! Please check your inbox (and spam folder). Note: If you signed up with Google, you don't need a password reset.");
+      setSuccess("Password reset email sent! Please check your inbox.");
       setLoading(false);
     } catch (err: any) {
-      console.error("Reset error:", err);
-      let message = "Failed to send reset email. Please try again.";
-      
-      if (err.code === 'auth/user-not-found') {
-        message = "No account found with this email address.";
-      } else if (err.code === 'auth/invalid-email') {
-        message = "Please enter a valid email address.";
-      } else if (err.code === 'auth/too-many-requests') {
-        message = "Too many requests. Please try again later.";
-      } else if (err.message) {
-        message = err.message;
-      }
-      
-      setError(message);
+      setError(err.message || "Failed to send reset email.");
       setLoading(false);
     }
   };
@@ -110,299 +84,274 @@ const Login = () => {
         }
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName });
-        
-        // Send verification email
-        try {
-          await sendEmailVerification(userCredential.user);
-          setSuccess("Account created! A verification email has been sent. Please verify your email.");
-        } catch (verErr) {
-          console.error("Error sending verification email:", verErr);
-          setSuccess("Account created! (Note: We couldn't send a verification email right now).");
-        }
+        await sendEmailVerification(userCredential.user);
+        setSuccess("Account created! A verification email has been sent.");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
       navigate('/', { replace: true });
     } catch (err: any) {
-      console.error("Auth error:", err);
-      let message = "Authentication failed. Please check your credentials.";
-      
-      if (err.code === 'auth/email-already-in-use') {
-        message = "This email is already registered. We've switched you to the login screen.";
-        setView('login');
-      } else if (err.code === 'auth/network-request-failed') {
-        message = "Network error: Please check your connection. If using an ad-blocker or 'Incognito', try disabling them. Also, try opening the app in a new tab.";
-      } else if (err.code === 'auth/weak-password') {
-        message = "Password should be at least 6 characters.";
-      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        message = "Invalid email or password.";
-      } else if (err.message) {
-        message = err.message;
-      }
-      
-      setError(message);
+      setError(err.message || "Authentication failed.");
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col-reverse lg:flex-row overflow-hidden transition-colors duration-300">
-      {/* Left Side: Branding & Value Prop (Bottom on mobile, Left on desktop) */}
-      <div className="lg:w-1/2 bg-indigo-600 dark:bg-indigo-900 p-8 lg:p-16 flex flex-col justify-between text-white relative overflow-hidden shrink-0">
-        <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-96 h-96 bg-indigo-500 dark:bg-indigo-800 rounded-full blur-3xl opacity-50" />
-        <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-96 h-96 bg-indigo-700 dark:bg-indigo-950 rounded-full blur-3xl opacity-50" />
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center shadow-xl">
-              <Box className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <span className="text-2xl font-black tracking-tighter uppercase">Mini ERP</span>
+    <div className="h-screen bg-white flex flex-col lg:flex-row overflow-hidden">
+      {/* Left Side: Auth Form */}
+      <div className="lg:w-[45%] flex flex-col p-6 lg:p-10 overflow-y-auto scrollbar-hide">
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-6 lg:mb-10 shrink-0">
+          <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg border border-white/10 overflow-hidden">
+            <svg viewBox="0 0 512 512" className="w-7 h-7">
+              <defs>
+                <linearGradient id="gold-login-refined" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style={{stopColor:'#FDE68A',stopOpacity:1}} />
+                  <stop offset="20%" style={{stopColor:'#B45309',stopOpacity:1}} />
+                  <stop offset="50%" style={{stopColor:'#FDE68A',stopOpacity:1}} />
+                  <stop offset="80%" style={{stopColor:'#92400E',stopOpacity:1}} />
+                  <stop offset="100%" style={{stopColor:'#78350F',stopOpacity:1}} />
+                </linearGradient>
+              </defs>
+              <g fill="url(#gold-login-refined)">
+                <path d="M175 125h110c60 0 85 30 85 75s-25 75-85 75h-25v30c40 15 80 50 140 105-30-10-70-40-140-55v55 c0 20 15 25 35 25h15v15h-150v-15h15c20 0 35-5 35-25V165c0-20-15-25-35-25h-15v-15z M260 250c30 0 45-15 45-37s-15-37-45-37h-25v74h25z" />
+                <path d="M140 230c100-15 150 40 300 180-80-40-140-90-300-35z" />
+              </g>
+            </svg>
           </div>
-
-          <div className="max-w-md">
-            <h1 className="text-5xl lg:text-7xl font-black mb-8 leading-[0.9] tracking-tighter uppercase italic">
-              Empower Your <br />
-              <span className="text-indigo-200 dark:text-indigo-300">Business</span> <br />
-              Growth
-            </h1>
-            <p className="text-indigo-100 dark:text-indigo-200 text-lg font-medium leading-relaxed mb-12">
-              The all-in-one platform for modern store management. Track inventory, manage sales, and grow your business with data-driven insights.
-            </p>
-
-            <div className="space-y-6">
-              {[
-                { icon: ShoppingCart, text: "Advanced POS & Sales Tracking" },
-                { icon: Package, text: "Real-time Inventory Management" },
-                { icon: BarChart3, text: "Comprehensive Financial Reports" },
-                { icon: ShieldCheck, text: "Secure Multi-user Access" }
-              ].map((feature, i) => (
-                <div key={i} className="flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-white/10 dark:bg-white/5 flex items-center justify-center group-hover:bg-white/20 dark:group-hover:bg-white/10 transition-colors">
-                    <feature.icon className="w-5 h-5 text-indigo-200 dark:text-indigo-400" />
-                  </div>
-                  <span className="font-bold text-sm uppercase tracking-widest">{feature.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <span className="text-xl font-black text-gray-900 tracking-tighter uppercase italic">RAFI</span>
         </div>
 
-        <div className="relative z-10 mt-12 pt-8 border-t border-indigo-500/50 dark:border-indigo-400/30 flex items-center justify-between">
-          <div className="flex -space-x-3">
-            {[1, 2, 3, 4].map(i => (
-              <img 
-                key={i}
-                src={`https://i.pravatar.cc/100?img=${i + 10}`} 
-                alt="User" 
-                className="w-10 h-10 rounded-full border-2 border-indigo-600 dark:border-indigo-900"
-              />
-            ))}
-            <div className="w-10 h-10 rounded-full bg-indigo-500 dark:bg-indigo-800 border-2 border-indigo-600 dark:border-indigo-900 flex items-center justify-center text-[10px] font-bold">
-              +2k
+        <div className="max-w-md w-full mx-auto lg:mx-0 flex-1 flex flex-col justify-center">
+          <div className="mb-4">
+            <h2 className="text-3xl font-bold text-gray-900 mb-1">Welcome Back</h2>
+            <p className="text-gray-500 font-medium text-sm">Please enter your details to sign in.</p>
+          </div>
+
+          {/* View Toggle Tabs */}
+          <div className="flex border-b border-gray-100 mb-6 shrink-0">
+            <button 
+              onClick={() => setView('login')}
+              className={`pb-3 px-2 text-sm font-bold transition-all relative ${view === 'login' ? 'text-gray-900' : 'text-gray-400'}`}
+            >
+              Login
+              {view === 'login' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gray-900" />}
+            </button>
+            <button 
+              onClick={() => setView('signup')}
+              className={`pb-3 px-8 text-sm font-bold transition-all relative ${view === 'signup' ? 'text-gray-900' : 'text-gray-400'}`}
+            >
+              Create Account
+              {view === 'signup' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gray-900" />}
+            </button>
+          </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-xs animate-in fade-in slide-in-from-top-1">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <p className="font-bold">{error}</p>
             </div>
-          </div>
-          <p className="text-xs font-bold text-indigo-200 dark:text-indigo-400 uppercase tracking-widest">Trusted by 2,000+ businesses</p>
-        </div>
-      </div>
+          )}
 
-      {/* Right Side: Auth Form */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-gray-50 dark:bg-gray-950 overflow-y-auto transition-colors duration-300">
-        <div className="max-w-md w-full py-8">
-          <div className="mb-10">
-            <h2 className="text-4xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tighter italic">
-              {view === 'login' ? 'Welcome Back' : view === 'signup' ? 'Get Started' : 'Reset Password'}
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 font-medium">
-              {view === 'login' 
-                ? 'Sign in to access your business dashboard. (Internet required for login)' 
-                : view === 'signup'
-                ? 'Create your account and start managing your business today. (Internet required for signup)'
-                : 'Enter your email to receive a password reset link.'}
-            </p>
-          </div>
+          {success && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-100 rounded-xl flex items-center gap-3 text-green-600 text-xs">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <p className="font-bold">{success}</p>
+            </div>
+          )}
 
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-700">
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-900/50 rounded-2xl flex items-center gap-3 text-red-600 dark:text-red-400 text-sm animate-in fade-in slide-in-from-top-2">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <p className="font-bold">{error}</p>
-              </div>
-            )}
-
-            {success && (
-              <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-900/50 rounded-2xl flex items-center gap-3 text-green-600 dark:text-green-400 text-sm animate-in fade-in slide-in-from-top-2">
-                <ShieldCheck className="w-5 h-5 shrink-0" />
-                <p className="font-bold">{success}</p>
-              </div>
-            )}
-
+          <div className="space-y-4">
             {view === 'forgot-password' ? (
-              <form onSubmit={handleForgotPassword} className="space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-                    <input 
-                      required
-                      type="email"
-                      placeholder="name@company.com"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                    />
-                  </div>
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Email Address</label>
+                  <input 
+                    required
+                    type="email"
+                    placeholder="name@company.com"
+                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-4 focus:ring-gray-100 focus:border-gray-900 outline-none transition-all font-medium text-gray-900"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                  />
                 </div>
-
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center"
+                  className="w-full py-3 bg-[#006b44] text-white rounded-xl font-bold text-sm hover:bg-[#005a39] transition-all flex items-center justify-center gap-2 group"
                 >
-                  {loading ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    'Send Reset Link'
-                  )}
+                  {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Send Reset Link'}
+                  {!loading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
                 </button>
-
                 <button 
                   type="button"
-                  onClick={() => {
-                    setView('login');
-                    setError(null);
-                    setSuccess(null);
-                  }}
-                  className="w-full text-center text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+                  onClick={() => setView('login')}
+                  className="w-full text-center text-xs font-bold text-gray-500 hover:text-gray-900 transition-colors"
                 >
                   Back to Login
                 </button>
               </form>
             ) : (
-              <form onSubmit={handleEmailAuth} className="space-y-5">
+              <form onSubmit={handleEmailAuth} className="space-y-3">
                 {view === 'signup' && (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Full Name</label>
-                    <div className="relative">
-                      <UserIcon2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-                      <input 
-                        required
-                        type="text"
-                        placeholder="John Doe"
-                        className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
-                        value={displayName}
-                        onChange={e => setDisplayName(e.target.value)}
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Full Name</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="John Doe"
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-4 focus:ring-gray-100 focus:border-gray-900 outline-none transition-all font-medium text-gray-900"
+                      value={displayName}
+                      onChange={e => setDisplayName(e.target.value)}
+                    />
                   </div>
                 )}
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-                    <input 
-                      required
-                      type="email"
-                      placeholder="name@company.com"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                    />
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Email Address</label>
+                  <input 
+                    required
+                    type="email"
+                    placeholder="name@company.com"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-4 focus:ring-gray-100 focus:border-gray-900 outline-none transition-all font-medium text-gray-900"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Password</label>
+                  <input 
+                    required
+                    type="password"
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-4 focus:ring-gray-100 focus:border-gray-900 outline-none transition-all font-medium text-gray-900"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                  />
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between ml-1">
-                    <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Password</label>
-                    {view === 'login' && (
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setView('forgot-password');
-                          setError(null);
-                          setSuccess(null);
-                        }}
-                        className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-                      >
-                        Forgot?
-                      </button>
-                    )}
+                {view === 'login' && (
+                  <div className="flex items-center justify-between py-1">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+                        checked={rememberMe}
+                        onChange={e => setRememberMe(e.target.checked)}
+                      />
+                      <span className="text-xs font-medium text-gray-500 group-hover:text-gray-900 transition-colors">Remember me</span>
+                    </label>
+                    <button 
+                      type="button"
+                      onClick={() => setView('forgot-password')}
+                      className="text-xs font-bold text-[#006b44] hover:text-[#005a39] transition-colors"
+                    >
+                      Forgot?
+                    </button>
                   </div>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-                    <input 
-                      required
-                      type="password"
-                      placeholder="••••••••"
-                      className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-sm dark:text-white dark:placeholder-gray-600"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                    />
-                  </div>
-                </div>
+                )}
 
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center"
+                  className="w-full py-3 bg-[#006b44] text-white rounded-xl font-bold text-sm hover:bg-[#005a39] transition-all flex items-center justify-center gap-2 group"
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    view === 'login' ? 'Sign In' : 'Create Account'
+                    view === 'login' ? 'Sign In' : 'Sign Up'
                   )}
+                  {!loading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
                 </button>
               </form>
             )}
 
-            {view !== 'forgot-password' && (
-              <>
-                <div className="relative my-8">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-100 dark:border-gray-700"></div>
-                  </div>
-                  <div className="relative flex justify-center text-[10px] uppercase tracking-[0.3em] font-black text-gray-300 dark:text-gray-600">
-                    <span className="bg-white dark:bg-gray-800 px-4">Or continue with</span>
-                  </div>
-                </div>
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-100"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold text-gray-400">
+                <span className="bg-white px-4">Or continue with</span>
+              </div>
+            </div>
 
-                <button 
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-4 py-4 px-6 bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-2xl font-black text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-indigo-200 dark:hover:border-indigo-400 transition-all duration-300 group shadow-sm disabled:opacity-50"
-                >
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                  <span className="uppercase tracking-widest text-xs">Google Account</span>
-                </button>
-              </>
-            )}
+            <div className="grid grid-cols-2 gap-3 pb-2">
+              <button 
+                onClick={handleGoogleLogin}
+                className="flex items-center justify-center gap-2 w-full py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-all font-sans text-xs"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Google
+              </button>
+              <button className="flex items-center justify-center gap-2 w-full py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-all font-sans text-xs">
+                <svg className="w-4 h-4" viewBox="0 0 384 512" fill="currentColor">
+                  <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 21.8-88.5 21.8-11.4 0-51.1-19-81.6-19-47.5 0-101.4 34.5-123.8 81.3-17.7 37.1-11.5 125.7 36 211.5 14.4 25.8 44 65.6 77.4 65.6 28.5 0 35.4-18.7 70.8-18.7 34.6 0 41.2 18.7 70.7 18.7 35.8 0 62.1-36.9 76.7-65.6 24.3-44.6 34.5-88.3 34.7-90.5-.3-.2-67.4-26.2-67.7-106.5zm-38.6-180.7c16-20 26.8-47.8 23.8-75.6-23.9 1-52.9 16-72 38.3-17.1 19.8-31 46.4-26.2 75 25.4 2 52.8-16 74.4-37.7z"/>
+                </svg>
+                Apple
+              </button>
+            </div>
           </div>
+        </div>
+      </div>
 
-          <div className="mt-8 text-center">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              {view === 'login' ? "Don't have an account?" : view === 'signup' ? "Already have an account?" : ""}
-              {view !== 'forgot-password' && (
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setView(view === 'login' ? 'signup' : 'login');
-                    setError(null);
-                    setSuccess(null);
-                  }}
-                  className="ml-2 text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest text-xs hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
-                >
-                  {view === 'login' ? 'Sign Up' : 'Log In'}
-                </button>
-              )}
+      {/* Right Side: Branding & Image */}
+      <div className="hidden lg:flex lg:w-[55%] bg-[#0f172a] relative overflow-hidden flex-col p-12">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-br from-indigo-500/10 to-transparent pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col h-full">
+          <div className="mb-8">
+            <span className="inline-block px-3 py-1 bg-white/10 backdrop-blur-md rounded-lg text-emerald-400 text-[10px] font-bold tracking-wide border border-white/10 mb-6">
+              Retail Excellence 2026
+            </span>
+            <h1 className="text-5xl font-bold text-white leading-tight tracking-tight mb-4">
+              Manage Your <span className="text-emerald-400">Business</span> <br />
+              <span className="text-emerald-400">Smarter</span>
+            </h1>
+            <p className="text-gray-400 text-base max-w-sm leading-relaxed font-medium">
+              Everything you need to run your retail or hospitality business in one place. Real-time analytics and inventory tracking.
             </p>
           </div>
 
-          <p className="mt-12 text-center text-[10px] font-bold text-gray-300 dark:text-gray-600 uppercase tracking-[0.2em] leading-relaxed">
-            By continuing, you agree to our <br />
-            <span className="text-gray-400 dark:text-gray-500">Terms of Service</span> & <span className="text-gray-400 dark:text-gray-500">Privacy Policy</span>
-          </p>
+          {/* Product Mockup Container */}
+          <div className="relative flex-1 mt-4">
+            <div className="absolute top-8 left-0 w-full h-full bg-gradient-to-t from-[#0f172a] via-transparent to-transparent z-10" />
+            
+            {/* Tablet Mockup */}
+            <div className="relative w-full max-w-2xl mx-auto aspect-[4/3] bg-gray-800 rounded-[2rem] p-3 shadow-2xl border-[10px] border-gray-900 transform translate-y-8 rotate-[-3deg] overflow-hidden">
+              <div className="w-full h-full bg-[#0a0a0b] rounded-[1.25rem] overflow-hidden p-4">
+                {/* Mock UI Content */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div className="h-3 w-24 bg-white/10 rounded-full" />
+                    <div className="h-6 w-6 bg-white/10 rounded-lg" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="h-24 bg-emerald-500/10 rounded-2xl border border-emerald-500/20" />
+                    <div className="h-24 bg-white/5 rounded-2xl border border-white/10" />
+                  </div>
+                  <div className="h-32 bg-white/5 rounded-2xl border border-white/10" />
+                </div>
+              </div>
+            </div>
+
+            {/* Floating Revenue Card */}
+            <div className="absolute top-0 right-4 z-20 bg-[#1e293b]/90 backdrop-blur-xl p-4 rounded-xl border border-white/10 shadow-2xl w-56 animate-in fade-in slide-in-from-right-10 duration-1000">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Revenue</span>
+                <div className="w-6 h-3 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                  <div className="w-1 h-1 bg-emerald-500 rounded-full mr-1" />
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-white mb-3">$24,592.00</div>
+              <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 w-3/4 rounded-full" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

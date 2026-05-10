@@ -69,6 +69,7 @@ export interface Customer {
   memberIds?: string[];
   initialBalance?: number;
   initialBalanceCurrency?: Currency;
+  totalOwed?: number;
 }
 
 export interface Attachment {

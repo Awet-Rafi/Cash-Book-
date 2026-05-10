@@ -15,10 +15,10 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
       },
       manifest: {
-        name: 'Mini ERP Store Manager',
-        short_name: 'MiniERP',
-        description: 'Modern store management platform',
-        theme_color: '#4f46e5',
+        name: 'RAFI | Intelligence',
+        short_name: 'RAFI',
+        description: 'Elite business management platform',
+        theme_color: '#0a0a0a',
         icons: [
           {
             src: 'favicon.svg',

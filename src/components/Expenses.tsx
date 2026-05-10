@@ -342,7 +342,7 @@ export default function Expenses() {
                       </td>
                       <td className="px-6 py-4 text-sm font-black text-red-600 dark:text-red-400">
                         {expense.currency === 'USD' ? '$' : ''}
-                        {expense.amount.toLocaleString('en-US')}
+                        {Math.round(expense.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         {expense.currency === 'SSP' ? ' SSP' : ''}
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -397,7 +397,7 @@ export default function Expenses() {
                     <div className="text-right shrink-0">
                       <p className="text-sm font-black text-red-600 dark:text-red-400">
                         {expense.currency === 'USD' ? '$' : ''}
-                        {expense.amount.toLocaleString('en-US')}
+                        {Math.round(expense.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         {expense.currency === 'SSP' ? ' SSP' : ''}
                       </p>
                       <div className="flex items-center justify-end gap-2 mt-2">
@@ -446,13 +446,13 @@ export default function Expenses() {
                   <div>
                     <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Total USD Expenses</p>
                     <p className="text-2xl font-black text-red-700 dark:text-red-400">
-                      ${filteredExpenses.filter(e => e.currency === 'USD').reduce((acc, e) => acc + e.amount, 0).toLocaleString('en-US')}
+                      ${Math.round(filteredExpenses.filter(e => e.currency === 'USD').reduce((acc, e) => acc + e.amount, 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div className="pt-2 border-t border-red-100 dark:border-red-900/30">
                     <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Total SSP Expenses</p>
                     <p className="text-2xl font-black text-red-700 dark:text-red-400">
-                      {filteredExpenses.filter(e => e.currency === 'SSP').reduce((acc, e) => acc + e.amount, 0).toLocaleString('en-US')} SSP
+                      {Math.round(filteredExpenses.filter(e => e.currency === 'SSP').reduce((acc, e) => acc + e.amount, 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP
                     </p>
                   </div>
                 </div>
@@ -485,7 +485,7 @@ export default function Expenses() {
             <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-5 rounded-2xl shadow-lg shadow-indigo-100 dark:shadow-none text-white">
               <p className="text-[10px] font-bold text-indigo-100 uppercase tracking-widest mb-1">Monthly USD Payroll</p>
               <p className="text-lg font-black">
-                ${employees.filter(e => e.salaryCurrency === 'USD' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0).toLocaleString('en-US')}
+                ${Math.round(employees.filter(e => e.salaryCurrency === 'USD' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </p>
               <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-indigo-100/80">
                 <Users className="w-3 h-3" />
@@ -495,7 +495,7 @@ export default function Expenses() {
             <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-5 rounded-2xl shadow-lg shadow-emerald-100 dark:shadow-none text-white">
               <p className="text-[10px] font-bold text-emerald-100 uppercase tracking-widest mb-1">Monthly SSP Payroll</p>
               <p className="text-lg font-black">
-                {employees.filter(e => e.salaryCurrency === 'SSP' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0).toLocaleString('en-US')} SSP
+                {Math.round(employees.filter(e => e.salaryCurrency === 'SSP' && e.status === 'active').reduce((acc, e) => acc + e.salary, 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP
               </p>
               <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-emerald-100/80">
                 <Users className="w-3 h-3" />
@@ -537,7 +537,7 @@ export default function Expenses() {
                     <td className="px-6 py-4">
                       <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                         {employee.salaryCurrency === 'USD' ? '$' : ''}
-                        {employee.salary.toLocaleString('en-US')}
+                        {Math.round(employee.salary).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         {employee.salaryCurrency === 'SSP' ? ' SSP' : ''}
                       </p>
                     </td>
@@ -630,7 +630,7 @@ export default function Expenses() {
                     <p className="text-[8px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-0.5">Salary</p>
                     <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                       {employee.salaryCurrency === 'USD' ? '$' : ''}
-                      {employee.salary.toLocaleString('en-US')}
+                      {Math.round(employee.salary).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </p>
                   </div>
                   <div className="flex gap-2">

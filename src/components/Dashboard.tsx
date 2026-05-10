@@ -465,7 +465,7 @@ export default function Dashboard() {
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fill: '#9ca3af', fontSize: 12 }}
-                  tickFormatter={(value) => `$${value.toLocaleString('en-US')}`}
+                  tickFormatter={(value) => `$${Math.round(value).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
                 />
                 <Tooltip 
                   contentStyle={{ 

@@ -282,8 +282,17 @@ export default function CashBook() {
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [sales, payments, expenses, cashTransactions]);
 
   const filteredTransactions = React.useMemo(() => allTransactions.filter(t => {
-    const matchesSearch = t.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      t.customerName?.toLowerCase().includes(searchLower) ||
+      t.id.toLowerCase().includes(searchLower) ||
+      t.notes?.toLowerCase().includes(searchLower) ||
+      t.type?.toLowerCase().includes(searchLower) ||
+      t.amount.toString().includes(searchLower) ||
+      new Date(t.timestamp).toLocaleDateString('en-US', { 
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }).toLowerCase().includes(searchLower);
     
     if (!matchesSearch) return false;
 
@@ -403,13 +412,13 @@ export default function CashBook() {
     doc.text(`Daily Cash Report: ${format(new Date(summary.date), 'MMMM dd, yyyy')}`, 14, 20);
     
     doc.setFontSize(12);
-    doc.text(`Total Payments (SSP): ${(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US')} SSP`, 14, 30);
-    doc.text(`Total Payments (USD): $${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US')}`, 14, 38);
-    doc.text(`Grand Total SSP: ${summary.totalDaySSP.toLocaleString('en-US')} SSP`, 14, 46);
-    doc.text(`Grand Total USD: $${summary.totalDayUSD.toLocaleString('en-US')}`, 14, 54);
+    doc.text(`Total Payments (SSP): ${(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP`, 14, 30);
+    doc.text(`Total Payments (USD): $${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, 14, 38);
+    doc.text(`Grand Total SSP: ${summary.totalDaySSP.toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP`, 14, 46);
+    doc.text(`Grand Total USD: $${summary.totalDayUSD.toLocaleString('en-US', { maximumFractionDigits: 0 })}`, 14, 54);
 
-    const sspTransactions = summary.transactions.filter((t: any) => t.currency === 'SSP');
-    const usdTransactions = summary.transactions.filter((t: any) => t.currency === 'USD');
+    const sspTransactions = [...summary.transactions].filter((t: any) => t.currency === 'SSP').reverse();
+    const usdTransactions = [...summary.transactions].filter((t: any) => t.currency === 'USD').reverse();
 
     let currentY = 65;
 
@@ -419,18 +428,22 @@ export default function CashBook() {
       doc.text("SSP Transactions", 14, currentY);
       currentY += 5;
 
-      const sspData = sspTransactions.map((t: any) => [
-        format(new Date(t.timestamp), 'HH:mm'),
-        t.customerName,
-        t.type,
-        `${t.isCashIn ? '+' : '-'}${t.amount.toLocaleString('en-US')} SSP`,
-        t.notes || '',
-        `#${t.id.slice(-6).toUpperCase()}`
-      ]);
+      let sspBalance = 0;
+      const sspData = sspTransactions.map((t: any) => {
+        sspBalance += (t.isCashIn ? t.amount : -t.amount);
+        return [
+          format(new Date(t.timestamp), 'HH:mm'),
+          t.customerName,
+          t.type,
+          `${t.isCashIn ? '+' : '-'}${Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP`,
+          t.currency === 'SSP' ? `Rate: ${t.exchangeRate || 1000}` : (t.notes || ''),
+          `${Math.round(sspBalance).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP`
+        ];
+      });
 
       autoTable(doc, {
         startY: currentY,
-        head: [['Time', 'Customer', 'Type', 'Amount', 'Notes', 'ID']],
+        head: [['Time', 'Customer', 'Type', 'Amount', 'Notes', 'Balance']],
         body: sspData,
         theme: 'grid',
         headStyles: { fillColor: [34, 197, 94] }, // Green for SSP
@@ -451,18 +464,22 @@ export default function CashBook() {
       doc.text("USD Transactions", 14, currentY);
       currentY += 5;
 
-      const usdData = usdTransactions.map((t: any) => [
-        format(new Date(t.timestamp), 'HH:mm'),
-        t.customerName,
-        t.type,
-        `${t.isCashIn ? '+' : '-'}$${t.amount.toLocaleString('en-US')}`,
-        t.notes || '',
-        `#${t.id.slice(-6).toUpperCase()}`
-      ]);
+      let usdBalance = 0;
+      const usdData = usdTransactions.map((t: any) => {
+        usdBalance += (t.isCashIn ? t.amount : -t.amount);
+        return [
+          format(new Date(t.timestamp), 'HH:mm'),
+          t.customerName,
+          t.type,
+          `${t.isCashIn ? '+' : '-'}$${Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+          t.notes || '',
+          `$${Math.round(usdBalance).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+        ];
+      });
 
       autoTable(doc, {
         startY: currentY,
-        head: [['Time', 'Customer', 'Type', 'Amount', 'Notes', 'ID']],
+        head: [['Time', 'Customer', 'Type', 'Amount', 'Notes', 'Balance']],
         body: usdData,
         theme: 'grid',
         headStyles: { fillColor: [79, 70, 229] }, // Indigo for USD
@@ -474,31 +491,41 @@ export default function CashBook() {
   };
 
   const exportDailyToExcel = (summary: any) => {
-    const sspData = summary.transactions
+    let sspBalance = 0;
+    const sspData = [...summary.transactions]
       .filter((t: any) => t.currency === 'SSP')
-      .map((t: any) => ({
-        Time: format(new Date(t.timestamp), 'HH:mm'),
-        Customer: t.customerName,
-        Type: t.type,
-        Direction: t.isCashIn ? 'IN' : 'OUT',
-        Amount: t.amount,
-        Notes: t.notes || '',
-        Currency: 'SSP',
-        ID: t.id
-      }));
+      .reverse()
+      .map((t: any) => {
+        sspBalance += (t.isCashIn ? t.amount : -t.amount);
+        return {
+          Time: format(new Date(t.timestamp), 'HH:mm'),
+          Customer: t.customerName,
+          Type: t.type,
+          Direction: t.isCashIn ? 'IN' : 'OUT',
+          Amount: Math.round(t.amount),
+          Notes: t.currency === 'SSP' ? `Rate: ${t.exchangeRate || 1000}` : (t.notes || ''),
+          Currency: 'SSP',
+          Balance: Math.round(sspBalance)
+        };
+      });
 
-    const usdData = summary.transactions
+    let usdBalance = 0;
+    const usdData = [...summary.transactions]
       .filter((t: any) => t.currency === 'USD')
-      .map((t: any) => ({
-        Time: format(new Date(t.timestamp), 'HH:mm'),
-        Customer: t.customerName,
-        Type: t.type,
-        Direction: t.isCashIn ? 'IN' : 'OUT',
-        Amount: t.amount,
-        Notes: t.notes || '',
-        Currency: 'USD',
-        ID: t.id
-      }));
+      .reverse()
+      .map((t: any) => {
+        usdBalance += (t.isCashIn ? t.amount : -t.amount);
+        return {
+          Time: format(new Date(t.timestamp), 'HH:mm'),
+          Customer: t.customerName,
+          Type: t.type,
+          Direction: t.isCashIn ? 'IN' : 'OUT',
+          Amount: Math.round(t.amount),
+          Notes: t.notes || '',
+          Currency: 'USD',
+          Balance: Math.round(usdBalance)
+        };
+      });
 
     const wb = XLSX.utils.book_new();
     
@@ -599,13 +626,13 @@ export default function CashBook() {
                 <div>
                   <p className="text-[8px] font-black text-green-500 dark:text-green-400 uppercase tracking-widest mb-0.5">Total SSP (Payments)</p>
                   <p className="text-sm sm:text-base lg:text-lg font-black text-green-700 dark:text-green-300">
-                    {filteredTransactions.filter(t => t.currency === 'SSP').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US')} SSP
+                    {filteredTransactions.filter(t => t.currency === 'SSP').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP
                   </p>
                 </div>
                 <div>
                   <p className="text-[8px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-0.5">Total USD (Payments)</p>
                   <p className="text-sm sm:text-base lg:text-lg font-black text-indigo-700 dark:text-indigo-300">
-                    ${filteredTransactions.filter(t => t.currency === 'USD').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US')} USD
+                    ${filteredTransactions.filter(t => t.currency === 'USD').reduce((acc, t) => acc + t.amount, 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} USD
                   </p>
                 </div>
               </div>
@@ -674,7 +701,7 @@ export default function CashBook() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
               <input 
                 type="text" 
-                placeholder="Search customer or ID..."
+                placeholder="Search..."
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white dark:placeholder-gray-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -735,11 +762,11 @@ export default function CashBook() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                   <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl border border-green-100 dark:border-green-900/30 shadow-sm">
                     <p className="text-[9px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest mb-1">Payments of SSP</p>
-                    <p className="text-base font-black text-green-700 dark:text-green-300">{(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US')} SSP</p>
+                    <p className="text-base font-black text-green-700 dark:text-green-300">{(summary.totalCashSalesSSP + summary.totalRepaymentsSSP).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP</p>
                   </div>
                   <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
                     <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Payments (USD)</p>
-                    <p className="text-base font-black text-indigo-700 dark:text-indigo-300">${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US')}</p>
+                    <p className="text-base font-black text-indigo-700 dark:text-indigo-300">${(summary.totalCashSalesUSD + summary.totalRepaymentsUSD).toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
                   </div>
                 </div>
 
@@ -749,7 +776,7 @@ export default function CashBook() {
                     <div className="p-4 space-y-4">
                       <h4 className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest border-b border-green-100 dark:border-green-900/30 pb-2 flex items-center justify-between">
                         <span>SSP Transactions</span>
-                        <span className="font-black">{(summary.totalDaySSP).toLocaleString('en-US')} SSP</span>
+                        <span className="font-black">{(summary.totalDaySSP).toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP</span>
                       </h4>
                       
                       <div className="space-y-2">
@@ -775,7 +802,7 @@ export default function CashBook() {
                             
                             <div className="text-right shrink-0 ml-2">
                               <span className={cn("text-[11px] font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                                {t.isCashIn ? '+' : '-'}{t.amount.toLocaleString('en-US')}
+                                {t.isCashIn ? '+' : '-'}{Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
                           </div>
@@ -790,7 +817,7 @@ export default function CashBook() {
                     <div className="p-4 space-y-4">
                       <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest border-b border-indigo-100 dark:border-indigo-900/30 pb-2 flex items-center justify-between">
                         <span>USD Payments</span>
-                        <span className="font-black">${(summary.totalDayUSD).toLocaleString('en-US')}</span>
+                        <span className="font-black">${Math.round(summary.totalDayUSD).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
                       </h4>
                       
                       <div className="space-y-2">
@@ -816,7 +843,7 @@ export default function CashBook() {
                             
                             <div className="text-right shrink-0 ml-2">
                               <span className={cn("text-[11px] font-black", t.isCashIn ? "text-indigo-600 dark:text-indigo-400" : "text-red-600 dark:text-red-400")}>
-                                {t.isCashIn ? '+' : '-'}${t.amount.toLocaleString('en-US')}
+                                {t.isCashIn ? '+' : '-'}${Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
                           </div>
@@ -857,7 +884,7 @@ export default function CashBook() {
                       <td className="px-6 py-4"><p className="text-sm font-bold text-gray-900 dark:text-white">{t.customerName}</p></td>
                       <td className="px-6 py-4 text-right">
                         <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                          {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{t.amount.toLocaleString('en-US')}{t.currency === 'SSP' ? ' SSP' : ''}
+                          {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}{t.currency === 'SSP' ? ' SSP' : ''}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -883,7 +910,7 @@ export default function CashBook() {
                       <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase font-black">{t.type} • #{t.id.split('_')[0].slice(-6).toUpperCase()}</p>
                     </div>
                     <p className={cn("text-sm font-black", t.isCashIn ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                      {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{t.amount.toLocaleString('en-US')}{t.currency === 'SSP' ? ' SSP' : ''}
+                      {t.isCashIn ? '+' : '-'}{t.currency === 'USD' ? '$' : ''}{Math.round(t.amount).toLocaleString('en-US', { maximumFractionDigits: 0 })}{t.currency === 'SSP' ? ' SSP' : ''}
                     </p>
                   </div>
                   <div className="flex gap-4 text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase">

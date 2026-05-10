@@ -247,9 +247,9 @@ export default function Reports() {
       [],
       ['Summary'],
       ['Metric', 'Value'],
-      ['Total Revenue', totalRevenue],
-      ['Total Expenses', totalExpenses],
-      ['Net Profit', totalProfit],
+      ['Total Revenue', Math.round(totalRevenue)],
+      ['Total Expenses', Math.round(totalExpenses)],
+      ['Net Profit', Math.round(totalProfit)],
       [],
       ['Detailed Breakdown'],
       [viewType === 'yearly' ? 'Month' : 'Day', 'Revenue', 'Expenses', 'Net Profit', 'Margin %']
@@ -263,9 +263,9 @@ export default function Reports() {
       
       return [
         name,
-        data.revenue,
-        data.expenses,
-        data.profit,
+        Math.round(data.revenue),
+        Math.round(data.expenses),
+        Math.round(data.profit),
         Math.round(margin)
       ];
     });

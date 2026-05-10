@@ -6,13 +6,16 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number, currency: 'USD' | 'SSP' = 'USD') {
+  const roundedAmount = Math.round(amount);
   if (currency === 'SSP') {
-    return `${amount.toLocaleString('en-US')} SSP`;
+    return `${roundedAmount.toLocaleString('en-US', { maximumFractionDigits: 0 })} SSP`;
   }
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format(amount);
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(roundedAmount);
 }
 
 export function safeTimestamp(timestamp: any): string {

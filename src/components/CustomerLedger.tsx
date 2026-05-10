@@ -26,6 +26,8 @@ import {
   UserPlus, 
   Move, 
   Trash, 
+  CornerUpRight,
+  RefreshCcw,
   TrendingUp, 
   TrendingDown, 
   Paperclip, 
@@ -45,7 +47,7 @@ import {
   Filter
 } from 'lucide-react';
 import { format, formatDistanceToNow, isToday, parseISO } from 'date-fns';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -72,12 +74,40 @@ export default function CustomerLedger() {
   const [selectedCustomerForPayment, setSelectedCustomerForPayment] = useState<Customer | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const customerIdParam = searchParams.get('id');
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
+
+  const toggleTransactionSelection = (id: string) => {
+    setSelectedTransactions(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = (ids: string[]) => {
+    if (selectedTransactions.length === ids.length) {
+      setSelectedTransactions([]);
+    } else {
+      setSelectedTransactions(ids);
+    }
+  };
+
   useEffect(() => {
     const state = location.state as { customerId?: string } | null;
     if (state?.customerId) {
-      setExpandedCustomer(state.customerId);
+      // If we have state (e.g., from POS), we want history to be /ledger -> /ledger?id=...
+      // This ensures swiping back from the details goes to the list.
+      navigate('/ledger', { replace: true, state: {} });
+      setTimeout(() => {
+        navigate(`/ledger?id=${state.customerId}`);
+      }, 0);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    setExpandedCustomer(customerIdParam);
+    setSelectedTransactions([]); // Clear selection when switching customers
+  }, [customerIdParam]);
   const [paymentAmountUSD, setPaymentAmountUSD] = useState('');
   const [paymentAmountSSP, setPaymentAmountSSP] = useState('');
   const [paymentExchangeRate, setPaymentExchangeRate] = useState('1,000');
@@ -403,6 +433,24 @@ export default function CustomerLedger() {
     }
   };
 
+  const handleBulkDelete = async (transactions: any[]) => {
+    if (selectedTransactions.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedTransactions.length} transactions?`)) return;
+
+    try {
+      for (const id of selectedTransactions) {
+        const transaction = transactions.find(t => t.id === id);
+        if (transaction) {
+          await deleteDoc(doc(db, transaction.collection, id));
+        }
+      }
+      setSelectedTransactions([]);
+    } catch (error) {
+      console.error("Error in bulk delete:", error);
+      alert("Failed to delete some transactions.");
+    }
+  };
+
   useEffect(() => {
     if (!isPaymentModalOpen) {
       setPaymentError(null);
@@ -507,42 +555,177 @@ export default function CustomerLedger() {
   const exportToPDF = (customer: any, transactions: any[]) => {
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text(`Transaction History: ${customer.name}`, 14, 20);
+    doc.setTextColor(79, 70, 229); // Indigo
+    doc.text(`Statement of Account: ${customer.name}`, 14, 22);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Report Generated: ${format(new Date(), 'PPP p')}`, 14, 32);
+    
     doc.setFontSize(12);
-    doc.text(`Total Outstanding: ${formatCurrency(customer.totalOwed)}`, 14, 30);
-    doc.text(`Report Date: ${format(new Date(), 'PPP')}`, 14, 38);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Net Balance: ${formatCurrency(customer.totalOwed)}`, 14, 42);
 
-    const tableData = transactions.map(item => [
-      format(new Date(item.timestamp), 'MMM dd, yyyy HH:mm'),
-      item.isPayment ? 'Payment' : 'New Sale',
-      item.isPayment ? '-' : '',
-      formatCurrency(item.amount || item.totalAmount, item.currency || 'USD'),
-      item.notes || '-'
-    ]);
+    let runningBalance = customer.initialBalanceCurrency === 'SSP' 
+      ? (customer.initialBalance || 0) / 1000 
+      : (customer.initialBalance || 0);
 
-    autoTable(doc, {
-      startY: 45,
-      head: [['Date', 'Type', '', 'Amount', 'Notes']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [79, 70, 229] }
+    const tableData: any[] = [];
+    
+    // Add initial balance row FIRST
+    if (customer.initialBalance && customer.initialBalance !== 0) {
+      tableData.push([
+        '-',
+        'Initial Opening Balance',
+        runningBalance > 0 ? `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
+        runningBalance < 0 ? `$${Math.round(Math.abs(runningBalance)).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
+        `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+      ]);
+    }
+
+    // Sort transactions by date (Oldest first)
+    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    sortedTransactions.forEach(item => {
+      const isSSP = item.currency === 'SSP';
+      const rate = item.exchangeRate || 1000;
+      
+      if (!item.isPayment && !item.isExpense && item.items && item.items.length > 0) {
+        // Itemize Sales
+        item.items.forEach((subItem: any) => {
+          const subTotalUSD = isSSP ? ((subItem.price * subItem.quantity) / rate) : (subItem.price * subItem.quantity);
+          runningBalance += subTotalUSD;
+          tableData.push([
+            format(new Date(item.timestamp), 'dd/MM/yyyy HH:mm'),
+            `${subItem.name} (x${subItem.quantity})`,
+            `$${Math.round(subTotalUSD).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            '-',
+            `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+          ]);
+        });
+      } else {
+        // Payments or expenses or sales without item array
+        let amountUSD = 0;
+        if (item.collection === 'payments') {
+          amountUSD = item.creditDeductionUSD ?? (isSSP ? (item.amount / rate) : item.amount);
+        } else {
+          const rawAmount = item.amount || item.totalAmount;
+          amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
+        }
+        
+        const isEntryPositive = !item.isPayment && !item.isExpense;
+        const sales = isEntryPositive ? amountUSD : 0;
+        const payments = !isEntryPositive ? amountUSD : 0;
+        
+        runningBalance += sales;
+        runningBalance -= payments;
+
+        tableData.push([
+          format(new Date(item.timestamp), 'dd/MM/yyyy HH:mm'),
+          item.notes || (item.isPayment ? (item.collection === 'expenses' ? 'Expense' : 'Payment') : 'Sale'),
+          sales > 0 ? `$${Math.round(sales).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
+          payments > 0 ? `$${Math.round(payments).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
+          `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        ]);
+      }
     });
 
-    doc.save(`${customer.name}_transactions_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    autoTable(doc, {
+      startY: 50,
+      head: [['Date', 'Description / Item', 'Sales (+)', 'Payments (-)', 'Balance']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { 
+        fillColor: [79, 70, 229],
+        textColor: [255, 255, 255],
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 'auto' },
+        2: { halign: 'right', cellWidth: 30 },
+        3: { halign: 'right', cellWidth: 30 },
+        4: { halign: 'right', cellWidth: 35, fontStyle: 'bold' }
+      },
+      styles: { fontSize: 9 }
+    });
+
+    doc.save(`${customer.name}_statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const exportToExcel = (customer: any, transactions: any[]) => {
-    const data = transactions.map(item => ({
-      Date: format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm'),
-      Type: item.isPayment ? 'Payment' : 'New Sale',
-      Amount: item.amount || item.totalAmount,
-      Notes: item.notes || ''
-    }));
+    let runningBalance = customer.initialBalanceCurrency === 'SSP' 
+      ? (customer.initialBalance || 0) / 1000 
+      : (customer.initialBalance || 0);
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Transactions");
-    XLSX.writeFile(wb, `${customer.name}_history.xlsx`);
+    const worksheetData: any[] = [
+      ['Statement of Account', customer.name],
+      ['Generated On', format(new Date(), 'PPP p')],
+      ['Net Balance', Math.round(customer.totalOwed)],
+      [], // Spacer row
+      ['Date', 'Description / Item', 'Sales (+)', 'Payments (-)', 'Balance']
+    ];
+
+    if (customer.initialBalance && customer.initialBalance !== 0) {
+      worksheetData.push([
+        format(new Date(customer.createdAt), 'yyyy-MM-dd'),
+        'Initial Opening Balance',
+        runningBalance > 0 ? Math.round(runningBalance) : '-',
+        runningBalance < 0 ? Math.round(Math.abs(runningBalance)) : '-',
+        Math.round(runningBalance)
+      ]);
+    }
+
+    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    sortedTransactions.forEach(item => {
+      const isSSP = item.currency === 'SSP';
+      const rate = item.exchangeRate || 1000;
+      
+      if (!item.isPayment && !item.isExpense && item.items && item.items.length > 0) {
+        item.items.forEach((subItem: any) => {
+          const subTotalUSD = isSSP ? ((subItem.price * subItem.quantity) / rate) : (subItem.price * subItem.quantity);
+          runningBalance += subTotalUSD;
+          worksheetData.push([
+            format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm'),
+            `${subItem.name} (x${subItem.quantity})`,
+            Math.round(subTotalUSD),
+            '-',
+            Math.round(runningBalance)
+          ]);
+        });
+      } else {
+        let amountUSD = 0;
+        if (item.collection === 'payments') {
+          amountUSD = item.creditDeductionUSD ?? (isSSP ? (item.amount / rate) : item.amount);
+        } else {
+          const rawAmount = item.amount || item.totalAmount;
+          amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
+        }
+        
+        const isEntryPositive = !item.isPayment && !item.isExpense;
+        const sales = isEntryPositive ? amountUSD : 0;
+        const payments = !isEntryPositive ? amountUSD : 0;
+        
+        runningBalance += sales;
+        runningBalance -= payments;
+
+        worksheetData.push([
+          format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm'),
+          item.notes || (item.isPayment ? (item.collection === 'expenses' ? 'Expense' : 'Payment') : 'Sale'),
+          sales > 0 ? Math.round(sales) : '-',
+          payments > 0 ? Math.round(payments) : '-',
+          Math.round(runningBalance)
+        ]);
+      }
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Statement');
+    XLSX.writeFile(workbook, `${customer.name}_statement.xlsx`);
   };
 
   const exportCashBookToPDF = (currency: 'USD' | 'SSP', transactions: any[], balance: number) => {
@@ -778,7 +961,7 @@ export default function CustomerLedger() {
       await deleteDoc(doc(db, 'customers', deleteCustomerInfo.id));
       setDeleteCustomerInfo(null);
       setActiveMenu(null);
-      setExpandedCustomer(null);
+      setSearchParams({});
     } catch (error) {
       console.error("Error deleting customer:", error);
       handleFirestoreError(error, OperationType.DELETE, `customers/${deleteCustomerInfo.id}`);
@@ -1111,7 +1294,7 @@ export default function CustomerLedger() {
             {/* List Item Content */}
             <div 
               onClick={() => {
-                setExpandedCustomer(customer.id);
+                setSearchParams({ id: customer.id });
               }}
               className="p-1 sm:p-2 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors rounded-2xl"
             >
@@ -1274,7 +1457,23 @@ export default function CustomerLedger() {
               status: 'transferred',
               notes: t.notes || (t.type === 'in' ? 'Manual Cash In' : 'Manual Cash Out')
             }))
-          ].sort((a: any, b: any) => {
+          ].filter(t => {
+            if (!searchTerm) return true;
+            const searchLower = searchTerm.toLowerCase();
+            let dateStr = '';
+            try {
+              const tDate = new Date(t.timestamp);
+              dateStr = format(tDate, 'MMM dd, yyyy h:mm a').toLowerCase();
+            } catch (e) {
+              dateStr = '';
+            }
+            const amountStr = (t.creditDeductionUSD ?? (t.amount || t.totalAmount || 0)).toString();
+            const notes = (t.notes || (t.isPayment ? 'Repayment Settlement' : t.isExpense ? 'Operational Expense' : (t.items?.[0]?.name || 'Direct Credit Sale Account'))).toLowerCase();
+            
+            return notes.includes(searchLower) || 
+                   amountStr.includes(searchLower) || 
+                   dateStr.includes(searchLower);
+          }).sort((a: any, b: any) => {
             const timeA = new Date(a.timestamp).getTime();
             const timeB = new Date(b.timestamp).getTime();
             if (timeA !== timeB) return timeA - timeB;
@@ -1292,8 +1491,8 @@ export default function CustomerLedger() {
               {/* Responsive Header */}
               {isDesktop ? (
                 <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-4 shrink-0 shadow-sm">
-                  <button 
-                    onClick={() => setExpandedCustomer(null)}
+                   <button 
+                    onClick={() => setSearchParams({})}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all active:scale-95"
                   >
                     <ArrowRight className="w-5 h-5 text-gray-600 dark:text-gray-400 rotate-180" />
@@ -1362,8 +1561,8 @@ export default function CustomerLedger() {
               ) : (
                 /* Mobile Header matching screenshot */
                 <div className="bg-white dark:bg-gray-800 px-2 py-3 flex items-center gap-1 shrink-0">
-                  <button 
-                    onClick={() => setExpandedCustomer(null)}
+                   <button 
+                    onClick={() => setSearchParams({})}
                     className="p-2 text-gray-900 dark:text-white"
                   >
                     <ArrowRight className="w-5 h-5 rotate-180" />
@@ -1391,20 +1590,20 @@ export default function CustomerLedger() {
               <div className="flex-1 overflow-y-auto pb-32">
                 <div className={cn(
                   "mx-auto space-y-4",
-                  isDesktop ? "max-w-[1500px] p-6 space-y-6" : "p-4"
+                  isDesktop ? "max-w-[1500px] p-6" : "p-4"
                 )}>
                   
                   {/* Desktop Only Filter Suite */}
                   {isDesktop && (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                       {['Duration: All Time', 'Types: All', 'Contacts: All', 'Members: All', 'Payment Modes: All', 'Categories: All'].map((filter) => (
-                        <div key={filter} className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-bold text-gray-500 dark:text-gray-400 flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 shadow-sm transition-all whitespace-nowrap">
+                        <div key={filter} className="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/50 rounded-lg text-[9px] font-black text-gray-500 dark:text-gray-400 flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 shadow-sm transition-all whitespace-nowrap uppercase tracking-widest">
                           {filter}
-                          <ChevronDown className="w-3 h-3 opacity-40" />
+                          <ChevronDown className="w-2.5 h-2.5 opacity-30" />
                         </div>
                       ))}
                       <div className="ml-auto flex items-center gap-2">
-                         <button className="p-2 text-gray-400 hover:text-indigo-500 transition-colors"><Filter className="w-4 h-4" /></button>
+                         <button className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/50 rounded-lg shadow-sm"><Filter className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   )}
@@ -1413,14 +1612,16 @@ export default function CustomerLedger() {
                   {!isDesktop && (
                     <div className="space-y-3">
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4c6ef5]" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4c6ef5] dark:text-indigo-400" />
                         <input 
                           type="text" 
                           placeholder="Search by remark or amount" 
-                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-xl text-sm placeholder-gray-400 focus:ring-0 shadow-sm"
+                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-xl text-sm placeholder-gray-400 dark:placeholder:text-gray-500 dark:text-white focus:ring-0 shadow-sm outline-none"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
                         />
                       </div>
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 px-4 scrollbar-hide">
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 px-4 scrollbar-hide">
                         <button className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm shrink-0 border border-transparent">
                           <Filter className="w-4 h-4 text-[#4c6ef5]" />
                         </button>
@@ -1442,44 +1643,44 @@ export default function CustomerLedger() {
                   )}
 
                   {/* Balance Summary Section */}
-                  <div className="mb-6">
+                  <div className="mb-4">
                     {isDesktop ? (
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-3 gap-3">
                         {/* Total Payments */}
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border dark:border-gray-700 flex items-center gap-4 transition-all hover:shadow-md group">
-                          <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-600 shrink-0 group-hover:scale-105 transition-all">
-                            <Plus className="w-6 h-6" />
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border dark:border-gray-700/50 flex items-center gap-3 transition-all hover:shadow-md group">
+                          <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center text-green-600 shrink-0 group-hover:scale-105 transition-all">
+                            <Plus className="w-5 h-5" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em] mb-1">Total Payments</p>
-                            <p className="text-xl font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
+                            <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-0.5">Total Payments</p>
+                            <p className="text-lg font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
                               {(customer.totalIn || 0).toLocaleString()}
                             </p>
                           </div>
                         </div>
 
                         {/* Outstanding Balance */}
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border dark:border-gray-700 flex items-center gap-4 transition-all hover:shadow-md group">
-                          <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-600 shrink-0 group-hover:scale-105 transition-all">
-                            <Minus className="w-6 h-6" />
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border dark:border-gray-700/50 flex items-center gap-3 transition-all hover:shadow-md group">
+                          <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center text-red-600 shrink-0 group-hover:scale-105 transition-all">
+                            <Minus className="w-5 h-5" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em] mb-1">Outstanding Balance</p>
-                            <p className="text-xl font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
+                            <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-0.5">Outstanding Balance</p>
+                            <p className="text-lg font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
                               {(customer.outstandingBalance || 0).toLocaleString()}
                             </p>
                           </div>
                         </div>
 
                         {/* Net Balance */}
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border dark:border-gray-700 flex items-center gap-4 transition-all hover:shadow-md group">
-                          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 shrink-0 group-hover:scale-105 transition-all">
-                            <Equal className="w-6 h-6" />
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border dark:border-gray-700/50 flex items-center gap-3 transition-all hover:shadow-md group">
+                          <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-600 shrink-0 group-hover:scale-105 transition-all">
+                            <Equal className="w-5 h-5" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-[0.2em] mb-1">Net Balance</p>
+                            <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-0.5">Net Balance</p>
                             <p className={cn(
-                              "text-xl font-black tracking-tight font-mono truncate",
+                              "text-lg font-black tracking-tight font-mono truncate",
                               customer.totalOwed > 0 ? "text-red-600" : "text-green-600"
                             )}>
                               {customer.totalOwed.toLocaleString()}
@@ -1522,37 +1723,69 @@ export default function CustomerLedger() {
 
                   {/* Operational Entry Bar (Desktop Only - Mobile used separate FABs) */}
                   {isDesktop && (
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      <div className="flex-1 relative group max-w-2xl">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                    <div className="flex items-center justify-between gap-3 bg-gray-50/50 dark:bg-gray-800/30 p-2 rounded-2xl border border-gray-100 dark:border-gray-700/50">
+                      <div className="flex-1 relative group max-w-xl">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-indigo-500 transition-colors" />
                         <input 
                           type="text" 
                           placeholder="Search records, items, or value..." 
-                          className="w-full pl-11 pr-12 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm focus:border-indigo-500 outline-none"
+                          className="w-full pl-9 pr-12 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-xs focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm focus:border-indigo-500 outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 dark:text-white"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
                         />
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <button 
-                          onClick={() => navigate('/pos', { state: { customerId: customer.id } })}
-                          className="px-6 py-2.5 bg-[#00875a] text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-[#007049] transition-all shadow-lg active:scale-95"
+                          onClick={() => navigate('/pos', { state: { customerId: customer.id, returnTo: 'ledger' } })}
+                          className="px-5 py-2 bg-[#00875a] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#007049] transition-all shadow-lg shadow-green-500/10 active:scale-95 flex items-center gap-2"
                         >
-                          <Plus className="w-4 h-4" /> New Sale
+                          <Plus className="w-3.5 h-3.5" /> New Sale
                         </button>
                         <button 
                           onClick={() => { setSelectedCustomerForPayment(customer); setIsPaymentModalOpen(true); }}
-                          className="px-6 py-2.5 bg-[#de350b] text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-[#bf2d09] transition-all shadow-lg active:scale-95"
+                          className="px-5 py-2 bg-[#de350b] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#bf2d09] transition-all shadow-lg shadow-red-500/10 active:scale-95 flex items-center gap-2"
                         >
-                          <Minus className="w-4 h-4" /> Payment
+                          <Minus className="w-3.5 h-3.5" /> Payment
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* Transaction List / Table */}
                   <div className="space-y-4">
-                    <div className="flex items-center justify-center text-[12px] font-medium text-gray-500 uppercase tracking-widest py-2">
-                      <span>Showing {transactions.length} entries</span>
-                    </div>
+                    {/* Bulk Actions Toolbar */}
+                    {selectedTransactions.length > 0 && (
+                      <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 flex items-center gap-6 shadow-sm animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-3 pr-6 border-r border-gray-100 dark:border-gray-700">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedTransactions.length === transactions.length}
+                            onChange={() => toggleSelectAll(transactions.map((t: any) => t.id))}
+                            className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4 cursor-pointer" 
+                          />
+                          <span className="text-[12px] font-bold text-gray-700 dark:text-gray-300">Select All</span>
+                        </div>
+                        
+                        <button 
+                          onClick={() => handleBulkDelete(transactions)}
+                          className="flex items-center gap-2 text-[12px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          <Trash className="w-4 h-4" />
+                          Delete
+                        </button>
+                        
+                        <div className="flex items-center gap-2 text-[12px] font-bold text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer group relative">
+                          <CornerUpRight className="w-4 h-4" />
+                          <span>Move or Copy</span>
+                          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[12px] font-bold text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer group relative">
+                          <RefreshCcw className="w-4 h-4" />
+                          <span>Change Fields</span>
+                          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                        </div>
+                      </div>
+                    )}
 
                     {isDesktop ? (
                       /* Desktop Table (Kept original logic) */
@@ -1562,7 +1795,12 @@ export default function CustomerLedger() {
                             <thead>
                               <tr className="bg-[#f8f9fa] dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 text-[10px] font-black text-gray-400 uppercase tracking-widest h-12">
                                 <th className="px-6 w-14 text-center border-r border-gray-50 dark:border-gray-800">
-                                  <input type="checkbox" className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4" />
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedTransactions.length === transactions.length && transactions.length > 0}
+                                    onChange={() => toggleSelectAll(transactions.map((t: any) => t.id))}
+                                    className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4 cursor-pointer" 
+                                  />
                                 </th>
                                 <th className="px-6">Date & Time</th>
                                 <th className="px-6 w-[35%]">Details & Narrative</th>
@@ -1593,7 +1831,14 @@ export default function CustomerLedger() {
                                     className="group hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-all h-16 cursor-pointer"
                                     onClick={() => handleEditTransaction(item, customer)}
                                   >
-                                    <td className="px-6 text-center border-r dark:border-gray-800"><input type="checkbox" className="rounded-md w-4 h-4" /></td>
+                                    <td className="px-6 text-center border-r dark:border-gray-800" onClick={(e) => e.stopPropagation()}>
+                                      <input 
+                                        type="checkbox" 
+                                        checked={selectedTransactions.includes(item.id)}
+                                        onChange={() => toggleTransactionSelection(item.id)}
+                                        className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4 cursor-pointer" 
+                                      />
+                                    </td>
                                     <td className="px-6 whitespace-nowrap">
                                       <div className="flex flex-col">
                                         <span className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5">
@@ -1636,10 +1881,10 @@ export default function CustomerLedger() {
                                         ))}
                                       </div>
                                     </td>
-                                    <td className="px-6 text-right"><span className={cn("text-[14px] font-bold font-mono", item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]")}>{item.isPayment || item.isExpense ? '-' : '+'}{(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}</span></td>
+                                    <td className="px-6 text-right"><span className={cn("text-[14px] font-bold font-mono", item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]")}>{item.isPayment || item.isExpense ? '-' : '+'}{Math.round(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span></td>
                                     <td className="px-8 text-right bg-[#fcfcfc] dark:bg-gray-900/10">
                                       <div className="flex flex-col items-end">
-                                        <span className="text-[13px] font-bold font-mono text-gray-500">{item.bal.toLocaleString()}</span>
+                                        <span className="text-[13px] font-bold font-mono text-gray-500">{Math.round(item.bal).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
                                         {item.updatedAt && (
                                           <span className="text-[9px] font-bold text-gray-400 italic">(Edited)</span>
                                         )}
@@ -1713,10 +1958,26 @@ export default function CustomerLedger() {
                                     key={item.id}
                                     onClick={() => handleEditTransaction(item, customer)}
                                     className={cn(
-                                      "p-4 flex justify-between items-start cursor-pointer transition-colors active:bg-gray-50 dark:active:bg-gray-700",
-                                      idx !== items.length - 1 && "border-b dark:border-gray-700"
+                                      "p-4 flex gap-3 items-start cursor-pointer transition-colors active:bg-gray-50 dark:active:bg-gray-700",
+                                      idx !== items.length - 1 && "border-b dark:border-gray-700",
+                                      selectedTransactions.includes(item.id) && "bg-indigo-50/50 dark:bg-indigo-900/10"
                                     )}
                                   >
+                                    <div 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleTransactionSelection(item.id);
+                                      }}
+                                      className="pt-1 flex items-center shrink-0"
+                                    >
+                                      <input 
+                                        type="checkbox" 
+                                        checked={selectedTransactions.includes(item.id)}
+                                        readOnly
+                                        className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4 cursor-pointer" 
+                                      />
+                                    </div>
+
                                     <div className="space-y-2 min-w-0 flex-1 pr-4 text-left">
                                       <p className="text-[13px] font-medium text-gray-900 dark:text-white leading-tight">
                                         {item.notes || (item.isPayment ? 'Repayment Settlement' : item.isExpense ? 'Operational Expense' : (item.items?.[0]?.name || 'Direct Credit Sale Account'))}
@@ -1739,28 +2000,31 @@ export default function CustomerLedger() {
                                       </div>
                                       <p className="text-[11px] font-medium text-[#4c6ef5]">Entry by You <span className="text-gray-400 font-normal ml-1">at {format(parseISO(item.timestamp), 'h:mm a')}</span></p>
                                     </div>
-                                    <div className="text-right shrink-0 flex flex-col items-end gap-2">
-                                      <div>
+                                    <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+                                      <div className="text-right">
                                         <p className={cn(
-                                          "text-base font-black leading-none mb-1",
+                                          "text-lg font-black leading-none mb-1",
                                           item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]"
                                         )}>
-                                          {(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}
+                                          {item.isPayment || item.isExpense ? '-' : '+'}{Math.round(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                                         </p>
-                                        <p className="text-[10px] font-medium text-gray-400">Balance: {item.bal.toLocaleString()}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 flex items-center justify-end gap-1">
+                                          <TrendingUp className="w-2.5 h-2.5 opacity-50" />
+                                          Bal: {Math.round(item.bal).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                        </p>
                                         {item.updatedAt && (
                                           <p className="text-[9px] font-bold text-gray-400 italic mt-0.5">(Edited)</p>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-3">
+                                      <div className="flex items-center gap-1.5">
                                         <button 
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleEditTransaction(item, customer);
                                           }}
-                                          className="p-2 text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl active:bg-indigo-100"
+                                          className="p-2 text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg active:bg-indigo-100 transition-colors"
                                         >
-                                          <Edit3 className="w-4 h-4" />
+                                          <Edit3 className="w-3.5 h-3.5" />
                                         </button>
                                         <button 
                                           onClick={(e) => {
@@ -1772,9 +2036,9 @@ export default function CustomerLedger() {
                                               customerId: customer.id
                                             });
                                           }}
-                                          className="p-2 text-rose-400 bg-rose-50 dark:bg-rose-900/30 rounded-xl active:bg-rose-100"
+                                          className="p-2 text-rose-400 bg-rose-50 dark:bg-rose-900/40 rounded-lg active:bg-rose-100 transition-colors"
                                         >
-                                          <Trash className="w-4 h-4" />
+                                          <Trash className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
                                     </div>
@@ -1786,6 +2050,10 @@ export default function CustomerLedger() {
                         })()}
                       </div>
                     )}
+
+                    <div className="flex items-center justify-center text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.3em] py-8">
+                      <span>Showing {transactions.length} entries</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1794,7 +2062,7 @@ export default function CustomerLedger() {
               {!isDesktop && (
                 <div className="fixed bottom-0 left-0 right-0 p-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t dark:border-gray-800 flex justify-center items-center gap-3 h-20">
                   <button 
-                    onClick={() => navigate('/pos', { state: { customerId: customer.id } })}
+                    onClick={() => navigate('/pos', { state: { customerId: customer.id, returnTo: 'ledger' } })}
                     className="flex-1 h-11 flex items-center justify-center gap-2 bg-[#00875a] text-white rounded-lg font-black text-[12px] uppercase tracking-widest shadow-md transition-transform active:scale-95"
                   >
                     <Plus className="w-4 h-4" /> NEW SALE
@@ -1831,236 +2099,171 @@ export default function CustomerLedger() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 z-[401] w-full max-w-[500px] bg-slate-900 shadow-2xl flex flex-col h-full"
+              className="fixed right-0 top-0 bottom-0 z-[401] w-full max-w-[500px] bg-white dark:bg-gray-800 shadow-2xl flex flex-col h-full border-l border-gray-100 dark:border-gray-700"
             >
               {/* Header */}
-              <div className="px-6 py-5 border-b border-white/20 flex items-center justify-between">
-                <h2 className="text-[20px] font-bold text-white">
-                  Add Ledger Entry
+              <div className="px-6 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800">
+                <h2 className="text-[18px] font-black text-gray-900 dark:text-white tracking-tight">
+                  ADD LEDGER ENTRY
                 </h2>
                 <button 
                   onClick={() => setIsPaymentModalOpen(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors border border-gray-200 dark:border-gray-700"
                 >
-                  <X className="w-6 h-6 text-white" />
+                  <X className="w-5 h-5 text-gray-400 dark:text-white" />
                 </button>
               </div>
 
               {/* Form Content */}
-              <form onSubmit={handleRecordPayment} className="flex-1 overflow-y-auto p-6 space-y-6" autoComplete="off">
-                {/* Cash In/Out Tabs */}
-                <div className="flex gap-2">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setIsPaymentModalOpen(false);
-                      navigate('/pos', { state: { customerId: selectedCustomerForPayment?.id } });
-                    }}
-                    className="flex-1 py-4 bg-green-600 text-white rounded-xl text-xs font-black uppercase tracking-widest border border-white/30 shadow-sm"
-                  >
-                    POS / Sales
-                  </button>
-                  <button 
-                    type="button"
-                    className="flex-1 py-4 bg-red-600 text-white border border-white/30 rounded-xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-opacity"
-                  >
-                    Payment
-                  </button>
-                </div>
-
-                {/* Date & Time Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-white flex items-center gap-1">
-                      Date <span className="text-red-400">*</span>
-                    </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
-                      <input 
-                        type="date"
-                        className="w-full pl-12 pr-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
-                        value={paymentDate}
-                        onChange={e => setPaymentDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[12px] font-bold text-white">
-                      Time
-                    </label>
-                    <div className="relative">
-                      <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
-                      <input 
-                        type="text"
-                        readOnly
-                        value={format(new Date(), 'hh:mm a')}
-                        className="w-full pl-12 pr-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Amount Field */}
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-white flex items-center justify-between">
-                    <span>Amount <span className="text-red-400">*</span></span>
-                    <AlertCircle className="w-4 h-4 text-white/50 cursor-help" />
-                  </label>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      inputMode="decimal"
-                      placeholder="0"
-                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-0 outline-none transition-all font-bold text-base text-white placeholder:text-white/30"
-                      value={paymentAmountUSD}
-                      onChange={e => setPaymentAmountUSD(formatInputNumber(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                {/* Exchange Rate (SSP Mode) */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5 col-span-1">
-                    <label className="text-[12px] font-bold text-white mb-1">
-                      Amount SSP (Optional)
-                    </label>
-                    <input 
-                      type="text" 
-                      inputMode="numeric"
-                      placeholder="0"
-                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white placeholder:text-white/30"
-                      value={paymentAmountSSP}
-                      onChange={e => setPaymentAmountSSP(formatInputNumber(e.target.value))}
-                    />
-                  </div>
-                  <div className="space-y-1.5 col-span-1">
-                    <label className="text-[12px] font-bold text-white mb-1">
-                      Exchange Rate (1 USD = ?)
-                    </label>
-                    <input 
-                      type="text" 
-                      inputMode="numeric"
-                      className="w-full px-4 h-12 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all font-bold text-sm text-white"
-                      value={paymentExchangeRate}
-                      onChange={e => setPaymentExchangeRate(formatInputNumber(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                {/* Contact Name */}
-                <div className="space-y-1.5 text-left">
-                  <label className="text-[12px] font-bold text-white flex items-center justify-between">
-                    Contact Name
-                    <Shield className="w-4 h-4 text-white/70 cursor-pointer" />
-                  </label>
-                  <div className="relative group">
-                    <div className="w-full px-4 py-3 bg-transparent border-2 border-white rounded-lg font-bold text-sm text-white flex items-center justify-between">
-                      {selectedCustomerForPayment.name}
-                      <ChevronDown className="w-5 h-5 text-white/70" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Remarks */}
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-white">
-                    Remarks
-                  </label>
-                  <textarea 
-                    className="w-full px-4 py-3 bg-transparent border-2 border-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none transition-all text-sm h-24 resize-none text-white placeholder:text-white/30"
-                    placeholder="Enter Details (Name, Bill No, Item Name, Quantity etc)"
-                    value={paymentNotes}
-                    onChange={e => setPaymentNotes(e.target.value)}
-                  />
-                </div>
-
-                {/* Attach Bills */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[12px] font-bold text-white">
-                      Attachments ({paymentAttachments.length}/4)
-                    </label>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Upload Box (Only show if less than 4) */}
-                    {paymentAttachments.length < 4 && (
-                      <div className="col-span-1">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-32 bg-white dark:bg-gray-800">
+                <form onSubmit={handleRecordPayment} className="space-y-4" autoComplete="off">
+                  {/* Minimalist Date & Time Row (Matching Screenshot Style) */}
+                  <div className="flex items-center justify-between px-1 py-2 border-b border-gray-100 dark:border-gray-700 mb-6">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex items-center gap-1.5 cursor-pointer">
+                        <Calendar className="w-4 h-4 text-gray-400 dark:text-white" />
                         <input 
-                          type="file" 
-                          accept="image/*,.pdf"
-                          multiple
-                          onChange={handleFileChange}
-                          className="hidden"
-                          id="payment-attachment"
+                          type="date"
+                          className="bg-transparent border-none p-0 focus:ring-0 outline-none font-black text-xs text-gray-900 dark:text-white appearance-none cursor-pointer uppercase"
+                          value={paymentDate}
+                          onChange={e => setPaymentDate(e.target.value)}
                         />
-                        <label 
-                          htmlFor="payment-attachment"
-                          className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-white/30 rounded-xl bg-white/5 hover:bg-white/10 transition-all cursor-pointer group"
-                        >
-                          <div className="flex flex-col items-center justify-center">
-                            <Plus className="w-5 h-5 text-white/50 group-hover:text-white mb-1 transition-colors" />
-                            <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider text-center px-2">
-                              Add File
-                            </p>
+                        <ChevronDown className="w-3 h-3 text-gray-300 dark:text-gray-500" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex items-center gap-1.5 opacity-80">
+                        <Clock className="w-4 h-4 text-gray-400 dark:text-white" />
+                        <span className="font-black text-xs text-gray-900 dark:text-white p-0">
+                          {format(new Date(), 'hh:mm a')}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-gray-300 dark:text-gray-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Amount Field */}
+                  <div className="space-y-1">
+                    <div className="relative">
+                      <label className="absolute -top-2 left-3 bg-white dark:bg-gray-800 px-2 text-[10px] font-black text-indigo-500 dark:text-indigo-400 z-10 tracking-widest border-x border-gray-100 dark:border-gray-700">
+                        AMOUNT USD *
+                      </label>
+                      <input 
+                        type="text" 
+                        inputMode="decimal"
+                        placeholder="0"
+                        className="w-full px-4 h-12 bg-transparent border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:bg-gray-50 dark:focus:bg-gray-900 outline-none transition-all font-black text-lg text-gray-900 dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                        value={paymentAmountUSD}
+                        onChange={e => setPaymentAmountUSD(formatInputNumber(e.target.value))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Exchange Rate & SSP Amount Row (Level Up) */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="relative">
+                      <label className="absolute -top-2 left-3 bg-white dark:bg-gray-800 px-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 z-10 whitespace-nowrap tracking-wide">
+                        AMOUNT SSP (OPTIONAL)
+                      </label>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        placeholder="0"
+                        className="w-full px-3 h-10 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 outline-none transition-all font-black text-xs text-gray-900 dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                        value={paymentAmountSSP}
+                        onChange={e => setPaymentAmountSSP(formatInputNumber(e.target.value))}
+                      />
+                    </div>
+                    <div className="relative">
+                      <label className="absolute -top-2 left-3 bg-white dark:bg-gray-800 px-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 z-10 whitespace-nowrap tracking-wide">
+                        EXCHANGE RATE (1USD=?)
+                      </label>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        className="w-full px-3 h-10 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 outline-none transition-all font-black text-xs text-gray-900 dark:text-white"
+                        value={paymentExchangeRate}
+                        onChange={e => setPaymentExchangeRate(formatInputNumber(e.target.value))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contact Name (Read Only) */}
+                  <div className="relative">
+                    <label className="absolute -top-2 left-3 bg-white dark:bg-gray-800 px-1.5 text-[9px] font-black text-gray-400 dark:text-gray-500 z-10 uppercase tracking-widest">
+                      Contact
+                    </label>
+                    <div className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg font-black text-xs text-gray-900 dark:text-white flex items-center justify-between opacity-80 mt-1">
+                      {selectedCustomerForPayment.name.toUpperCase()}
+                      <Shield className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+                    </div>
+                  </div>
+
+                  {/* Remarks */}
+                  <div className="relative">
+                    <label className="absolute -top-2 left-3 bg-white dark:bg-gray-800 px-1.5 text-[9px] font-black text-gray-500 dark:text-gray-500 z-10 uppercase tracking-widest">
+                      Remarks
+                    </label>
+                    <textarea 
+                      className="w-full px-4 py-3 bg-transparent border border-gray-200 dark:border-gray-700 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-0 outline-none transition-all text-xs h-20 resize-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-700 font-bold mt-1"
+                      placeholder="Add transaction details..."
+                      value={paymentNotes}
+                      onChange={e => setPaymentNotes(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Attachment Section */}
+                  <div className="pt-2">
+                    <button 
+                      type="button"
+                      onClick={() => document.getElementById('payment-attachment')?.click()}
+                      className="w-full py-2 border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+                    >
+                      <Plus className="w-4 h-4 text-gray-400 dark:text-gray-600" />
+                      <span className="text-[10px] font-black text-gray-500 dark:text-gray-500 uppercase tracking-widest">Attach Proof</span>
+                    </button>
+                    <input 
+                      type="file" 
+                      id="payment-attachment"
+                      className="hidden"
+                      multiple
+                      onChange={handleFileChange}
+                    />
+                    
+                    {/* Previews */}
+                    {paymentAttachments.length > 0 && (
+                      <div className="grid grid-cols-4 gap-2 mt-3">
+                        {paymentAttachments.map((att, index) => (
+                          <div key={index} className="relative aspect-square rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-900">
+                            {att.type === 'image' ? (
+                              <img src={att.url} className="w-full h-full object-cover grayscale" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-black text-[8px]">PDF</div>
+                            )}
+                            <button 
+                              onClick={() => removeAttachment(index)}
+                              className="absolute top-0.5 right-0.5 p-0.5 bg-black/50 rounded-full hover:bg-red-500 transition-colors"
+                            >
+                              <X className="w-2.5 h-2.5 text-white" />
+                            </button>
                           </div>
-                        </label>
+                        ))}
                       </div>
                     )}
-
-                    {/* Previews */}
-                    {paymentAttachments.map((att, index) => (
-                      <div key={index} className="w-full h-24 rounded-xl border border-white/20 overflow-hidden bg-white/10 shadow-sm relative group shrink-0">
-                        {att.type === 'pdf' ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center p-2 bg-red-900/20">
-                            <FileText className="w-6 h-6 text-red-500" />
-                            <span className="text-[8px] font-bold text-red-400 uppercase mt-1">PDF</span>
-                          </div>
-                        ) : (
-                          <img 
-                            src={att.url} 
-                            alt={`Attachment ${index + 1}`} 
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              setPreviewUrl(att.url);
-                              setPreviewType(att.type);
-                            }}
-                            className="p-1.5 bg-white/20 hover:bg-white/40 rounded-full transition-colors"
-                          >
-                            <Eye className="w-4 h-4 text-white" />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => removeAttachment(index)}
-                            className="p-1.5 bg-red-500/50 hover:bg-red-500 rounded-full transition-colors"
-                          >
-                            <X className="w-4 h-4 text-white" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                </div>
+                </form>
+              </div>
 
-                {/* Footer and Submit Button moved inside form to enable Enter key submission */}
-                <div className="pt-4 border-t border-white/10 flex bg-slate-950 -mx-6 px-6 pb-2">
-                  <button 
-                    type="submit"
-                    disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
-                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-base uppercase tracking-[0.2em] transition-all disabled:opacity-50 active:scale-[0.98] shadow-lg shadow-indigo-900/20"
-                  >
-                    {isSubmittingPayment ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </form>
-
-              {/* Removed old footer div outside form */}
+              {/* Sticky Footer */}
+              <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 sticky bottom-0 z-10 shadow-[0_-10px_25px_rgba(0,0,0,0.05)]">
+                <button 
+                  onClick={() => handleRecordPayment({ preventDefault: () => {} } as any)}
+                  disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
+                  className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-sm uppercase tracking-[0.3em] transition-all disabled:opacity-30 active:scale-[0.98] shadow-xl shadow-indigo-900/20 flex items-center justify-center gap-2"
+                >
+                  {isSubmittingPayment ? 'SAVING...' : 'SAVE'}
+                </button>
+              </div>
             </motion.div>
           </>
         )}

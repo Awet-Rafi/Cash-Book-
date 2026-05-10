@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, doc, serverTimestamp, increment, orderBy, writeBatch, getDoc, updateDoc, limit } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { collection, onSnapshot, query, where, doc, serverTimestamp, increment, orderBy, writeBatch, getDoc, updateDoc, limit, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, SaleItem, Customer } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
-import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle, X, FileText, Calendar } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, Trash2, Receipt, User, CheckCircle2, ChevronDown, AlertCircle, X, FileText, Calendar, ChevronRight, ArrowRight, Edit3 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -37,6 +37,10 @@ export default function POS() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [transactionDate, setTransactionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [originalTimestamp, setOriginalTimestamp] = useState<any>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const checkViewport = () => {
@@ -48,6 +52,8 @@ export default function POS() {
     window.addEventListener('resize', checkViewport);
     return () => window.removeEventListener('resize', checkViewport);
   }, []);
+
+  const [showMobileCustomerModal, setShowMobileCustomerModal] = useState(false);
 
   useEffect(() => {
     if (!businessId) return;
@@ -78,7 +84,10 @@ export default function POS() {
       setCustomers(customersList);
       
       // Check for pre-selected customer and currency from navigation state
-      const state = location.state as { customerId?: string, currency?: 'USD' | 'SSP', editSaleId?: string } | null;
+      const state = location.state as { customerId?: string, currency?: 'USD' | 'SSP', editSaleId?: string, returnTo?: string, defaultPaymentMethod?: 'cash' | 'credit' } | null;
+      if (state?.defaultPaymentMethod) {
+        setPaymentMethod(state.defaultPaymentMethod);
+      }
       if (state?.customerId) {
         const customer = customersList.find(c => c.id === state.customerId);
         if (customer) {
@@ -88,6 +97,9 @@ export default function POS() {
       }
       if (state?.currency) {
         setCurrency(state.currency);
+      }
+      if (state?.returnTo) {
+        setReturnTo(state.returnTo);
       }
 
       // Handle Edit Mode
@@ -105,6 +117,12 @@ export default function POS() {
               setDiscount(saleData.discount || 0);
               if (saleData.exchangeRate) setExchangeRate(saleData.exchangeRate);
               
+              if (saleData.timestamp) {
+                const date = saleData.timestamp.toDate ? saleData.timestamp.toDate() : new Date(saleData.timestamp);
+                setTransactionDate(date.toISOString().split('T')[0]);
+                setOriginalTimestamp(saleData.timestamp);
+              }
+
               if (saleData.customerId) {
                 const customer = customersList.find(c => c.id === saleData.customerId);
                 if (customer) setSelectedCustomer(customer);
@@ -282,12 +300,21 @@ export default function POS() {
       if (transactionDate) {
         // Use the selected date if provided
         const selectedDate = new Date(transactionDate);
-        // Set time to current time so it's not just 00:00:00
-        const now = new Date();
-        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
-        saleData.timestamp = selectedDate;
+        // Detect if the user changed the date day
+        const originalDateString = originalTimestamp ? (originalTimestamp.toDate ? originalTimestamp.toDate() : new Date(originalTimestamp)).toISOString().split('T')[0] : null;
+        
+        if (editingSaleId && transactionDate === originalDateString && originalTimestamp) {
+          // Keep original timestamp if date day hasn't changed
+          saleData.timestamp = originalTimestamp;
+        } else {
+          // Set to current time for the chosen day (or new sale)
+          const now = new Date();
+          selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+          saleData.timestamp = selectedDate;
+        }
       } else if (editingSaleId) {
         saleData.updatedAt = serverTimestamp();
+        saleData.timestamp = originalTimestamp;
       } else {
         saleData.timestamp = serverTimestamp();
       }
@@ -296,37 +323,33 @@ export default function POS() {
       if (editingSaleId) {
         batch.update(saleRef, saleData);
         
-        // 2. Restore Stock for original items and log movement
+        // 2. Clean up old stock movements to ensure "only one record"
+        const oldMovementsQuery = query(collection(db, 'stockMovements'), where('referenceId', '==', editingSaleId));
+        const oldMovementsSnapshot = await getDocs(oldMovementsQuery);
+        oldMovementsSnapshot.forEach(mDoc => {
+          batch.delete(mDoc.ref);
+        });
+        
+        // 3. Restore Stock for original items (Silent restoration, new movements will be logged below)
         for (const item of originalCart) {
           const productRef = doc(db, 'products', item.productId);
           batch.update(productRef, {
             stockQuantity: increment(item.quantity)
-          });
-
-          const movementRef = doc(collection(db, 'stockMovements'));
-          batch.set(movementRef, {
-            businessId,
-            productId: item.productId,
-            productName: item.name,
-            type: 'edit_sale',
-            quantity: item.quantity,
-            timestamp: serverTimestamp(),
-            notes: `Restored stock from edited sale ${editingSaleId}`,
-            referenceId: editingSaleId
           });
         }
       } else {
         batch.set(saleRef, saleData);
       }
       
-      // 3. Update Inventory for new items and log movement
+      // 4. Update Inventory for new items and log movement (This will be the "one record")
       for (const item of cart) {
         const productRef = doc(db, 'products', item.productId);
         batch.update(productRef, {
           stockQuantity: increment(-item.quantity)
         });
 
-        const movementRef = doc(collection(db, 'stockMovements'));
+        // Use deterministic ID to prevent duplicates for the same sale/product
+        const movementRef = doc(db, 'stockMovements', `${saleRef.id}_${item.productId}`);
         batch.set(movementRef, {
           businessId,
           productId: item.productId,
@@ -368,12 +391,13 @@ export default function POS() {
       setEditingSaleId(null);
       setOriginalCart([]);
       
-      if (isUpdate) {
-        // Automatically return to customer list if it was an update
-        navigate('/', { replace: true });
-      } else {
-        setShowReceipt(true);
+      // Navigate back if requested or if it was an update, otherwise stay on POS (cart is already cleared)
+      if (returnTo === 'ledger') {
+        navigate('/ledger', { replace: true, state: { customerId } });
+      } else if (isUpdate) {
+        navigate(-1);
       }
+      // Note: setShowReceipt(true) removed as requested to avoid success modal
     } catch (err) {
       console.error("Checkout error:", err);
       setError('Failed to complete the order. Please try again.');
@@ -439,7 +463,7 @@ export default function POS() {
                     <td className="hidden sm:table-cell px-2 py-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">{product.category}</td>
                     <td className="px-1.5 py-1 text-[13px] font-black text-indigo-600 dark:text-indigo-400 text-right font-mono">
                       {currency === 'USD' ? '$' : ''}
-                      {(product.price * rate).toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
+                      {(product.price * rate).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </td>
                     <td className="px-1.5 py-1 text-center">
                       <span className={cn(
@@ -547,75 +571,107 @@ export default function POS() {
             </div>
             
             <div className="px-2 py-1.5 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 space-y-1.5">
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="relative">
-                  <button 
-                    onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
-                    className={cn(
-                      "w-full flex items-center justify-between pl-6 pr-1.5 py-1 rounded-md text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-left dark:text-white",
-                      paymentMethod === 'credit' && !selectedCustomer 
-                        ? "bg-red-50 dark:bg-red-900/20 border-2 border-red-200" 
-                        : "bg-gray-50 dark:bg-gray-900/50 border border-transparent"
-                    )}
-                  >
-                    <User className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                    <span className="truncate">
-                      {selectedCustomer ? selectedCustomer.name : 'Cust'}
-                    </span>
-                    <ChevronDown className={cn("w-3 h-3 text-gray-400 transition-transform", showCustomerDropdown && "rotate-180")} />
-                  </button>
-                  <AnimatePresence>
-                    {showCustomerDropdown && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowCustomerDropdown(false)} />
-                        <motion.div 
-                          initial={{ opacity: 0, scale: 0.95, y: -10 }} 
-                          animate={{ opacity: 1, scale: 1, y: 0 }} 
-                          exit={{ opacity: 0, scale: 0.95, y: -10 }} 
-                          className="absolute bottom-full mb-2 sm:top-full sm:bottom-auto sm:mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
+              {/* Customer Selection Logic */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex-1">
+                    {!isDesktop ? (
+                      <button 
+                        onClick={() => setShowMobileCustomerModal(true)}
+                        className={cn(
+                          "w-full h-8 px-2 rounded-md border flex items-center justify-between text-[10px] font-black transition-all",
+                          paymentMethod === 'credit' && !selectedCustomer 
+                            ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-500" 
+                            : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-800 text-gray-400"
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <User className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{selectedCustomer ? selectedCustomer.name : 'Select Account'}</span>
+                        </div>
+                        <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />
+                      </button>
+                    ) : (
+                      <div className="relative" ref={customerDropdownRef}>
+                        <button 
+                          onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
+                          className={cn(
+                            "w-full h-8 px-2 rounded-md border flex items-center justify-between text-[10px] font-black transition-all",
+                            paymentMethod === 'credit' && !selectedCustomer 
+                              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-500" 
+                              : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-800 text-gray-400"
+                          )}
                         >
-                          <button onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }} className="w-full px-2 py-1 text-left text-[10px] hover:bg-gray-50 dark:hover:bg-gray-700 border-b font-black text-gray-400 uppercase">Guest</button>
-                          {customers.map(customer => (
-                            <button 
-                              key={customer.id} 
-                              onClick={() => { setSelectedCustomer(customer); setShowCustomerDropdown(false); }} 
-                              className="w-full px-2 py-1 text-left text-[11px] font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border-b dark:border-gray-700 flex items-center justify-between dark:text-white"
+                          <div className="flex items-center gap-1.5 truncate">
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{selectedCustomer ? selectedCustomer.name : 'Select Account'}</span>
+                          </div>
+                          <ChevronDown className={cn("w-3 h-3 transition-transform opacity-40", showCustomerDropdown && "rotate-180")} />
+                        </button>
+                        <AnimatePresence>
+                          {showCustomerDropdown && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-2xl z-50 max-h-48 overflow-y-auto custom-scrollbar"
                             >
-                              <span>{customer.name}</span>
-                              {selectedCustomer?.id === customer.id && <CheckCircle2 className="w-2.5 h-2.5 text-indigo-500" />}
-                            </button>
-                          ))}
-                        </motion.div>
-                      </>
+                              <div className="p-1 border-b border-gray-50 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+                                <input 
+                                  type="text"
+                                  placeholder="Filter..."
+                                  className="w-full px-2 py-1 bg-white dark:bg-gray-800 border-none rounded text-[10px] placeholder:text-gray-400"
+                                  value={customerSearch}
+                                  onChange={(e) => setCustomerSearch(e.target.value)}
+                                  autoFocus
+                                />
+                              </div>
+                              <button onClick={() => { setSelectedCustomer(null); setShowCustomerDropdown(false); }} className="w-full px-3 py-2 text-left text-[10px] font-bold text-gray-400 hover:bg-gray-50">GUEST</button>
+                              {customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => (
+                                <button key={c.id} onClick={() => { setSelectedCustomer(c); setShowCustomerDropdown(false); }} className="w-full px-3 py-2 text-left text-[10px] font-black uppercase tracking-tight hover:bg-indigo-50 dark:hover:bg-indigo-900/40 border-b last:border-0 dark:border-gray-700 dark:text-white flex justify-between">
+                                  <span>{c.name}</span>
+                                  {selectedCustomer?.id === c.id && <CheckCircle2 className="w-3 h-3 text-indigo-500" />}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     )}
-                  </AnimatePresence>
+                  </div>
+                  <div className="w-[120px] relative">
+                    <Calendar className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+                    <input 
+                      type="date" 
+                      value={transactionDate} 
+                      onChange={(e) => setTransactionDate(e.target.value)}
+                      className="w-full pl-6 pr-1 h-8 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[9px] font-black focus:ring-1 focus:ring-indigo-500 dark:text-white appearance-none" 
+                    />
+                  </div>
                 </div>
-                <div className="relative">
-                  <Calendar className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                  <input 
-                    type="date" 
-                    value={transactionDate} 
-                    onChange={(e) => setTransactionDate(e.target.value)}
-                    className="w-full pl-6 pr-1 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[10px] font-black focus:ring-1 focus:ring-indigo-500 dark:text-white appearance-none" 
-                  />
-                </div>
+
+                {!selectedCustomer && (
+                  <div className="relative">
+                    <Edit3 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Enter Guest Name..." 
+                      className="w-full pl-7 pr-2 h-8 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[10px] font-bold focus:ring-1 focus:ring-indigo-500 dark:text-white" 
+                      value={guestName} 
+                      onChange={(e) => setGuestName(e.target.value)} 
+                    />
+                  </div>
+                )}
               </div>
 
-              {!selectedCustomer && (
-                <div className="relative">
-                  <User className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                  <input type="text" placeholder="Guest Name" className="w-full pl-6 pr-1 py-1 bg-gray-50 dark:bg-gray-900/50 border-none rounded-md text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 dark:text-white" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
-                </div>
-              )}
-
               <div className="grid grid-cols-2 gap-1.5">
-                <div className="flex bg-gray-100 dark:bg-gray-900 p-0.5 rounded-md border border-gray-200 dark:border-gray-700">
-                  <button onClick={() => setPaymentMethod('cash')} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", paymentMethod === 'cash' ? "bg-white dark:bg-gray-800 text-indigo-600 shadow-sm" : "text-gray-400")}>Cash</button>
-                  <button onClick={() => { setPaymentMethod('credit'); setCurrency('USD'); }} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", paymentMethod === 'credit' ? "bg-white dark:bg-gray-800 text-amber-600 shadow-sm" : "text-gray-400")}>Credit</button>
+                <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <button onClick={() => setPaymentMethod('cash')} className={cn("flex-1 py-1 px-2 rounded-md text-[10px] font-black transition-all", paymentMethod === 'cash' ? "bg-white dark:bg-gray-800 text-indigo-600 shadow-sm" : "text-gray-400")}>Cash</button>
+                  <button onClick={() => { setPaymentMethod('credit'); setCurrency('USD'); }} className={cn("flex-1 py-1 px-2 rounded-md text-[10px] font-black transition-all", paymentMethod === 'credit' ? "bg-white dark:bg-gray-800 text-amber-600 shadow-sm" : "text-gray-400")}>Credit Debt</button>
                 </div>
-                <div className="flex bg-gray-100 dark:bg-gray-900 p-0.5 rounded-md border border-gray-200 dark:border-gray-700">
-                  <button onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", (currency === 'USD' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>USD</button>
-                  <button onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }} disabled={paymentMethod === 'credit'} className={cn("flex-1 py-0.5 px-1 rounded text-[9px] font-black transition-all", (currency === 'SSP' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>SSP</button>
+                <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <button onClick={() => { setCurrency('USD'); setIsMixedPayment(false); }} className={cn("flex-1 py-1 px-2 rounded-md text-[10px] font-black transition-all", (currency === 'USD' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>USD</button>
+                  <button onClick={() => { setCurrency('SSP'); setIsMixedPayment(false); }} disabled={paymentMethod === 'credit'} className={cn("flex-1 py-1 px-2 rounded-md text-[10px] font-black transition-all", (currency === 'SSP' && !isMixedPayment) ? "bg-white dark:bg-gray-800 text-green-600 shadow-sm" : "text-gray-400")}>SSP</button>
                 </div>
               </div>
 
@@ -699,7 +755,7 @@ export default function POS() {
                         </div>
                         <div className="flex items-center gap-2">
                           <p className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                            ${sale.totalAmount.toLocaleString()}
+                            ${Math.round(sale.totalAmount).toLocaleString()}
                           </p>
                           <button onClick={() => { setLastSale(sale); setShowReceipt(true); }} className="p-1 text-gray-300 hover:text-indigo-500 transition-colors bg-white dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 shadow-sm"><Receipt className="w-3 h-3" /></button>
                         </div>
@@ -709,24 +765,24 @@ export default function POS() {
                   </div>
                 ) : cart.length > 0 ? (
                   cart.map((item) => (
-                    <div key={item.productId} className="flex items-center gap-1 bg-gray-50/50 dark:bg-gray-900/30 p-1 rounded-md border border-gray-100/50 dark:border-gray-800/50">
+                    <div key={item.productId} className="flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/30 p-2 rounded-lg border border-gray-100/50 dark:border-gray-800/50">
                        <div className="flex-1 min-w-0">
-                         <p className="text-[11px] font-bold dark:text-white whitespace-normal leading-tight">{item.name}</p>
-                         <p className="text-[10px] text-gray-400 font-mono">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
+                         <p className="text-[13px] font-bold dark:text-white whitespace-normal leading-tight">{item.name}</p>
+                         <p className="text-[11px] text-gray-400 font-mono font-medium">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
                        </div>
-                       <div className="flex items-center gap-0.5 bg-white dark:bg-gray-700 rounded p-0.5 border border-gray-100 dark:border-gray-600 shrink-0">
-                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, -1); }} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Minus className="w-2 h-2 dark:text-gray-300" /></button>
+                       <div className="flex items-center gap-1 bg-white dark:bg-gray-700 rounded-lg p-1 border border-gray-100 dark:border-gray-600 shrink-0 shadow-sm">
+                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, -1); }} className="p-1 px-1.5 hover:bg-gray-50 dark:hover:bg-gray-600 rounded text-gray-500 dark:text-gray-400"><Minus className="w-3.5 h-3.5" /></button>
                          <input 
                            type="number" 
                            min="1"
                            value={item.quantity} 
                            onChange={(e) => setQuantity(item.productId, e.target.value)}
-                           className="text-[11px] font-black w-7 text-center dark:text-white bg-transparent border-none focus:ring-0 p-0" 
+                           className="text-[13px] font-black w-8 text-center dark:text-white bg-transparent border-none focus:ring-0 p-0" 
                            onClick={(e) => e.stopPropagation()}
                          />
-                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, 1); }} className="p-0.5 hover:bg-gray-50 dark:hover:bg-gray-500 rounded"><Plus className="w-2 h-2 dark:text-gray-300" /></button>
+                         <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, 1); }} className="p-1 px-1.5 hover:bg-gray-50 dark:hover:bg-gray-600 rounded text-gray-500 dark:text-gray-400"><Plus className="w-3.5 h-3.5" /></button>
                        </div>
-                      <button onClick={(e) => { e.stopPropagation(); removeFromCart(item.productId); }} className="text-gray-300 hover:text-red-500 p-0.5 transition-colors shrink-0"><Trash2 className="w-3 h-3" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); removeFromCart(item.productId); }} className="text-gray-300 hover:text-red-500 p-1 transition-colors shrink-0"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   ))
                 ) : (
@@ -735,16 +791,16 @@ export default function POS() {
               </div>
             </div>
 
-            <div className="p-2 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 space-y-1.5 shrink-0 shadow-[0_-8px_20px_rgba(0,0,0,0.05)]">
+            <div className="p-2 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur-md border-t border-gray-100 dark:border-gray-700 space-y-1.5 shrink-0 shadow-[0_-8px_20px_rgba(0,0,0,0.05)] sticky bottom-0 z-10">
               {isAdmin && todayStats && (
                 <div className="grid grid-cols-2 gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg border border-gray-100 dark:border-gray-700 shadow-inner mb-0.5">
                   <div className="text-center border-r border-gray-100 dark:border-gray-700">
                     <p className="text-[7.5px] font-black text-gray-400 uppercase tracking-tighter">Business USD</p>
-                    <p className="text-[12px] font-black text-green-600 dark:text-green-400 font-mono">${todayStats.usd.toLocaleString()}</p>
+                    <p className="text-[12px] font-black text-green-600 dark:text-green-400 font-mono">${Math.round(todayStats.usd).toLocaleString()}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[7.5px] font-black text-gray-400 uppercase tracking-tighter">Business SSP</p>
-                    <p className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{todayStats.ssp.toLocaleString()}</p>
+                    <p className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 font-mono">{Math.round(todayStats.ssp).toLocaleString()}</p>
                   </div>
                 </div>
               )}
@@ -759,7 +815,7 @@ export default function POS() {
                   <span>Subtotal</span>
                   <span className="dark:text-gray-200 font-mono font-bold tracking-tight">
                     {currency === 'USD' ? '$' : ''}
-                    {subtotal.toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}
+                    {Math.round(subtotal).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-[11px] text-red-500 font-bold">
@@ -788,9 +844,9 @@ export default function POS() {
                   <div className="text-right">
                     <span className="text-base font-black text-indigo-600 dark:text-indigo-400 block font-mono leading-none tracking-tighter">
                       {isMixedPayment ? (
-                        `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                        `$${Math.round(((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate)).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                       ) : (
-                        `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString(undefined, { minimumFractionDigits: currency === 'USD' ? 2 : 0 })}${currency === 'SSP' ? ' SSP' : ''}`
+                        `${currency === 'USD' ? '$' : ''}${Math.round(totalAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })}${currency === 'SSP' ? ' SSP' : ''}`
                       )}
                     </span>
                   </div>
@@ -821,6 +877,104 @@ export default function POS() {
         )}
       </AnimatePresence>
 
+      {/* Mobile Customer Selector Modal */}
+      <AnimatePresence>
+        {showMobileCustomerModal && (
+          <div className="fixed inset-0 z-[100] flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
+            <div className="bg-white dark:bg-gray-900 px-4 py-3 flex items-center justify-between border-b dark:border-gray-800 shrink-0 h-14">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setShowMobileCustomerModal(false)} className="p-1 -ml-1 text-gray-500">
+                  <X className="w-6 h-6" />
+                </button>
+                <p className="font-black text-sm uppercase dark:text-white tracking-widest leading-none">Select Client</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowMobileCustomerModal(false);
+                  setIsCartOpenMobile(false);
+                  navigate('/ledger');
+                }}
+                className="text-[10px] font-black text-indigo-500 uppercase tracking-widest h-8 flex items-center px-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg"
+              >
+                Add New
+              </button>
+            </div>
+
+            <div className="p-4 bg-white dark:bg-gray-900 border-b dark:border-gray-800 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input 
+                  type="text"
+                  placeholder="Filter accounts..."
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-950 border-none rounded-xl text-sm font-bold focus:ring-0 placeholder:text-gray-400 dark:text-white"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <button
+                onClick={() => {
+                  setSelectedCustomer(null);
+                  setGuestName('Guest');
+                  setPaymentMethod('cash');
+                  setShowMobileCustomerModal(false);
+                }}
+                className="w-full p-4 bg-white dark:bg-gray-900 rounded-2xl flex items-center gap-4 border border-gray-100 dark:border-gray-800 active:scale-[0.98] transition-transform text-left"
+              >
+                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-black text-sm uppercase dark:text-white tracking-tight">Guest Checkout</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Single transaction only</p>
+                </div>
+              </button>
+
+              <div className="pt-2 pb-1">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.25em] pl-2">Registered Accounts</p>
+              </div>
+
+              {customers
+                .filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()))
+                .map(customer => (
+                <button
+                  key={customer.id}
+                  onClick={() => {
+                    setSelectedCustomer(customer);
+                    setPaymentMethod('credit');
+                    setShowMobileCustomerModal(false);
+                    setGuestName('');
+                  }}
+                  className={cn(
+                    "w-full p-4 rounded-2xl flex items-center justify-between border active:scale-[0.98] transition-all text-left",
+                    selectedCustomer?.id === customer.id
+                      ? "bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-200 dark:shadow-none"
+                      : "bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center font-black transition-colors",
+                      selectedCustomer?.id === customer.id ? "bg-white text-indigo-600" : "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 border dark:border-transparent"
+                    )}>
+                      {customer.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className={cn("font-black text-sm uppercase tracking-tight", selectedCustomer?.id === customer.id ? "text-white" : "dark:text-white")}>{customer.name}</p>
+                      <p className={cn("text-[10px] font-bold uppercase font-mono", selectedCustomer?.id === customer.id ? "text-indigo-100" : "text-gray-400")}>Balance: ${customer.totalOwed?.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {selectedCustomer?.id === customer.id && <CheckCircle2 className="w-5 h-5 text-white" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
   {/* Mobile Floating Bar */}
   {!isDesktop && !isCartOpenMobile && cart.length > 0 && (
     <motion.button
@@ -848,9 +1002,9 @@ export default function POS() {
         <p className="text-[12px] font-black uppercase tracking-widest opacity-70">Total Amount</p>
         <p className="text-lg font-black">
           {isMixedPayment ? (
-            `$${((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate).toLocaleString('en-US')}`
+            `$${Math.round(((parseFloat(mixedUSD) || 0) + (parseFloat(mixedSSP) || 0) / exchangeRate)).toLocaleString('en-US')}`
           ) : (
-            `${currency === 'USD' ? '$' : ''}${totalAmount.toLocaleString('en-US')} ${currency === 'SSP' ? 'SSP' : ''}`
+            `${currency === 'USD' ? '$' : ''}${Math.round(totalAmount).toLocaleString('en-US')} ${currency === 'SSP' ? 'SSP' : ''}`
           )}
         </p>
       </div>
@@ -879,7 +1033,7 @@ export default function POS() {
                     <span className="font-medium text-gray-700 whitespace-normal leading-tight flex-1">{item.name}</span>
                     <span className="font-bold text-gray-900">
                       {item.quantity} x {lastSale.currency === 'USD' ? '$' : ''}
-                      {(item.priceAtSale * (lastSale.exchangeRate || 1)).toLocaleString('en-US')}
+                      {Math.round((item.priceAtSale * (lastSale.exchangeRate || 1))).toLocaleString('en-US')}
                       {lastSale.currency === 'SSP' ? ' SSP' : ''}
                     </span>
                   </div>
@@ -894,7 +1048,7 @@ export default function POS() {
                   <span className="text-gray-500">Subtotal</span>
                   <span className="font-bold text-gray-900">
                     {lastSale.currency === 'USD' ? '$' : ''}
-                    {lastSale.subtotal.toLocaleString('en-US')}
+                    {Math.round(lastSale.subtotal).toLocaleString('en-US')}
                     {lastSale.currency === 'SSP' ? ' SSP' : ''}
                   </span>
                 </div>
@@ -909,7 +1063,7 @@ export default function POS() {
                     <span>Discount</span>
                     <span className="font-bold">
                       -{lastSale.currency === 'USD' ? '$' : ''}
-                      {lastSale.discount.toLocaleString('en-US')}
+                      {Math.round(lastSale.discount).toLocaleString('en-US')}
                       {lastSale.currency === 'SSP' ? ' SSP' : ''}
                     </span>
                   </div>
@@ -922,15 +1076,15 @@ export default function POS() {
                         lastSale.paymentMethod === 'credit' ? "text-amber-600" : "text-indigo-600"
                       )}>
                         {lastSale.isMixed ? (
-                          `$${(lastSale.amountUSD + (lastSale.amountSSP / (lastSale.exchangeRate || 1000))).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                          `$${Math.round((lastSale.amountUSD + (lastSale.amountSSP / (lastSale.exchangeRate || 1000)))).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                         ) : (
-                          `${lastSale.currency === 'USD' ? '$' : ''}${lastSale.totalAmount.toLocaleString(undefined, { minimumFractionDigits: lastSale.currency === 'USD' ? 2 : 0 })} ${lastSale.currency === 'SSP' ? 'SSP' : ''}`
+                          `${lastSale.currency === 'USD' ? '$' : ''}${Math.round(lastSale.totalAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${lastSale.currency === 'SSP' ? 'SSP' : ''}`
                         )}
                       </span>
                       {lastSale.isMixed && (
                         <div className="flex flex-col items-end mt-1 text-[11px] font-black text-gray-400 uppercase tracking-tighter">
-                          <span>${lastSale.amountUSD.toLocaleString(undefined, { minimumFractionDigits: 2 })} Cash</span>
-                          <span>{lastSale.amountSSP.toLocaleString()} SSP Cash</span>
+                          <span>${Math.round(lastSale.amountUSD).toLocaleString(undefined, { maximumFractionDigits: 0 })} Cash</span>
+                          <span>{Math.round(lastSale.amountSSP).toLocaleString()} SSP Cash</span>
                         </div>
                       )}
                       {lastSale.paymentMethod === 'credit' && (
