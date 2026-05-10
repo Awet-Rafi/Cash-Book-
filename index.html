@@ -63,6 +63,9 @@
         <div class="spinner"></div>
         <p style="margin-top: 15px; font-size: 14px; color: #4338ca; font-weight: bold;">Initializing RAFI...</p>
         <p style="margin-top: 5px; font-size: 11px; color: #999;">If this takes more than 10 seconds, try a reset below.</p>
+        <div id="boot-status" style="margin-top: 10px; font-size: 10px; color: #ef4444; font-weight: bold; display: none;">
+          Failed to load application modules. Check internet or dev settings.
+        </div>
         <div style="margin-top: 25px; display: flex; flex-direction: column; gap: 10px; width: 220px;">
           <button onclick="location.reload(true);" style="padding: 12px; border-radius: 10px; border: 1px solid #4338ca; background: #4338ca; color: white; cursor: pointer; font-weight: bold;">Refresh Page</button>
           <button onclick="localStorage.clear(); sessionStorage.clear(); location.href='/'" style="padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: white; color: #666; cursor: pointer; font-size: 12px;">Hard Force Reset</button>
@@ -70,5 +73,14 @@
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Detection for failed module load (common on misconfigured static hosts)
+      setTimeout(function() {
+        if (!window.__RAFI_LOADED__ && document.getElementById('root').innerHTML.includes('boot-loader')) {
+          document.getElementById('boot-status').style.display = 'block';
+          console.error("The application module failed to initialize within 10 seconds. If this is a production build, ensure the main script is correctly linked.");
+        }
+      }, 10000);
+    </script>
   </body>
 </html>

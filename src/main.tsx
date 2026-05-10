@@ -6,6 +6,7 @@ const rootElement = document.getElementById('root');
 
 if (rootElement) {
   try {
+    (window as any).__RAFI_LOADED__ = true;
     const root = createRoot(rootElement);
     root.render(<App />);
   } catch (err) {
