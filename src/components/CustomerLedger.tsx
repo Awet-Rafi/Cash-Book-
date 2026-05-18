@@ -64,6 +64,7 @@ export default function CustomerLedger() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [innerSearchTerm, setInnerSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
   // Filter State
@@ -107,6 +108,7 @@ export default function CustomerLedger() {
   useEffect(() => {
     setExpandedCustomer(customerIdParam);
     setSelectedTransactions([]); // Clear selection when switching customers
+    setInnerSearchTerm(''); // Reset inner search when switching or closing
   }, [customerIdParam]);
   const [paymentAmountUSD, setPaymentAmountUSD] = useState('');
   const [paymentAmountSSP, setPaymentAmountSSP] = useState('');
@@ -367,6 +369,17 @@ export default function CustomerLedger() {
     }
   };
 
+  const resetPaymentForm = () => {
+    setPaymentAmountUSD('');
+    setPaymentAmountSSP('');
+    setPaymentExchangeRate('1,000');
+    setPaymentNotes('');
+    setPaymentAttachments([]);
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setEditingPaymentId(null);
+    setPaymentError(null);
+  };
+
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomerForPayment || (!paymentAmountUSD && !paymentAmountSSP) || isSubmittingPayment || !businessId) return;
@@ -416,12 +429,7 @@ export default function CustomerLedger() {
       });
       
       // Reset fields but modal is already closed
-      setPaymentAmountUSD('');
-      setPaymentAmountSSP('');
-      setPaymentNotes('');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
-      setPaymentAttachments([]);
-      setEditingPaymentId(null);
+      resetPaymentForm();
     } catch (error) {
       console.error("Error recording payment:", error);
       // Re-open and show error if it failed
@@ -1109,7 +1117,7 @@ export default function CustomerLedger() {
   </div>;
 
   return (
-    <div className="space-y-6 pb-32 transition-colors duration-300 max-w-full overflow-x-hidden overscroll-x-contain touch-pan-y">
+    <div className="space-y-4 pb-32 transition-colors duration-300 max-w-full overflow-x-hidden overscroll-x-contain touch-pan-y">
       {/* Sticky Upper Level Balance Summary */}
       <div className="sticky top-0 z-30 pt-2 pb-2 sm:pt-3 sm:pb-3 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6">
         
@@ -1210,7 +1218,7 @@ export default function CustomerLedger() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         <AnimatePresence>
           {isAddingInline && (
             <motion.div 
@@ -1281,97 +1289,91 @@ export default function CustomerLedger() {
           )}
         </AnimatePresence>
 
-        {filteredCustomerCredits.map((customer) => (
-          <motion.div 
-            key={customer.id}
-            className={cn(
-              "bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm relative group",
-              "hover:border-indigo-100 dark:hover:border-indigo-900 hover:shadow-md",
-              expandedCustomer === customer.id ? "ring-1 ring-indigo-500 dark:ring-indigo-400" : "",
-              activeMenu === customer.id ? "z-[50]" : "z-0"
-            )}
-          >
-            {/* List Item Content */}
-            <div 
-              onClick={() => {
-                setSearchParams({ id: customer.id });
-              }}
-              className="p-1 sm:p-2 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors rounded-2xl"
+      <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="divide-y divide-gray-200 dark:divide-gray-700">
+          {filteredCustomerCredits.map((customer) => (
+            <motion.div 
+              key={customer.id}
+              className={cn(
+                "relative group transition-all",
+                expandedCustomer === customer.id ? "bg-indigo-50/30 dark:bg-indigo-900/10" : "hover:bg-gray-50 dark:hover:bg-gray-700/30",
+                activeMenu === customer.id ? "z-[50]" : "z-0"
+              )}
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-black text-[9px] sm:text-[10px] shadow-inner shrink-0 leading-none">
-                  {customer.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-1.5">
-                    {editingCustomerId === customer.id ? (
-                      <form 
-                        onSubmit={handleRename}
-                        className="flex-1 flex items-center gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') setEditingCustomerId(null);
-                          }}
-                          className="flex-1 px-2 py-1 text-[10px] sm:text-xs font-black text-gray-900 dark:text-white border-b-2 border-indigo-500 outline-none bg-indigo-50/50 dark:bg-indigo-900/20 rounded-t"
-                        />
-                        <button 
-                          type="submit"
-                          disabled={isRenaming || !editingName.trim()}
-                          className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 disabled:opacity-50"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setEditingCustomerId(null)}
-                          className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </form>
-                    ) : (
-                      <>
-                        <h3 className="font-black text-gray-900 dark:text-white text-[10px] sm:text-xs tracking-tight truncate">{customer.name}</h3>
-                        <p className={cn(
-                          "text-xs font-black tracking-tighter",
-                          customer.totalOwed > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
-                        )}>
-                          {formatCurrency(customer.totalOwed)}
-                        </p>
-                      </>
-                    )}
+              {/* List Item Content */}
+              <div 
+                onClick={() => {
+                  setSearchParams({ id: customer.id });
+                }}
+                className="px-2 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
+                  <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 transition-all group-hover:scale-105 shrink-0">
+                    <Users className="w-3 h-3 sm:w-4 sm:h-4" />
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="text-[6px] font-black uppercase tracking-widest px-1 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center gap-0.5">
-                      <Users className="w-2 h-2" />
-                      {customer.membersCount}
-                    </span>
-                    <span className="text-[7px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-0.5">
-                      <Clock className="w-2 h-2" />
-                      {formatDistanceToNow(new Date(customer.lastUpdated))}
-                    </span>
+                  
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col">
+                      {editingCustomerId === customer.id ? (
+                        <form 
+                          onSubmit={handleRename}
+                          className="flex items-center gap-2 mb-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setEditingCustomerId(null);
+                            }}
+                            className="px-2 py-1 text-sm font-bold text-gray-900 dark:text-white border-b-2 border-indigo-500 outline-none bg-indigo-50/50 dark:bg-indigo-900/20 rounded-t"
+                          />
+                          <button 
+                            type="submit"
+                            disabled={isRenaming || !editingName.trim()}
+                            className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                          </button>
+                        </form>
+                      ) : (
+                        <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white tracking-tight truncate leading-tight">
+                          {customer.name}
+                        </h3>
+                      )}
+                      
+                      <div className="flex items-center gap-1 mt-0.5 text-[9px] sm:text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                        <span>{customer.membersCount}M</span>
+                        <span className="w-0.5 h-0.5 rounded-full bg-gray-300 dark:bg-gray-600" />
+                        <span className="truncate">{formatDistanceToNow(new Date(customer.lastUpdated), { addSuffix: true })}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <div 
-                  className="relative" 
-                  ref={activeMenu === customer.id ? menuRef : null}
-                  onMouseLeave={() => activeMenu === customer.id && setActiveMenu(null)}
-                >
-                  <button 
-                    onClick={() => setActiveMenu(activeMenu === customer.id ? null : customer.id)}
-                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="text-right flex flex-col items-end">
+                    <p className={cn(
+                      "text-xs sm:text-sm font-bold tracking-tight",
+                      customer.totalOwed > 0 ? "text-rose-500" : "text-emerald-500"
+                    )}>
+                      {customer.totalOwed > 0 ? '-' : ''}{Math.round(Math.abs(customer.totalOwed)).toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <div 
+                      className="relative" 
+                      ref={activeMenu === customer.id ? menuRef : null}
+                    >
+                      <button 
+                        onClick={() => setActiveMenu(activeMenu === customer.id ? null : customer.id)}
+                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
 
                   <AnimatePresence>
                     {activeMenu === customer.id && (
@@ -1425,12 +1427,15 @@ export default function CustomerLedger() {
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Mobile Balance - Removed as it's now in the header */}
+          {/* Mobile Balance - Removed as it's now in the header */}
 
-          </motion.div>
-        ))}
+            </motion.div>
+          ))}
+        </div>
       </div>
+    </div>
 
       {/* Full Page Customer Detail Overlay */}
       <AnimatePresence>
@@ -1458,8 +1463,8 @@ export default function CustomerLedger() {
               notes: t.notes || (t.type === 'in' ? 'Manual Cash In' : 'Manual Cash Out')
             }))
           ].filter(t => {
-            if (!searchTerm) return true;
-            const searchLower = searchTerm.toLowerCase();
+            if (!innerSearchTerm) return true;
+            const searchLower = innerSearchTerm.toLowerCase();
             let dateStr = '';
             try {
               const tDate = new Date(t.timestamp);
@@ -1560,25 +1565,25 @@ export default function CustomerLedger() {
                 </div>
               ) : (
                 /* Mobile Header matching screenshot */
-                <div className="bg-white dark:bg-gray-800 px-2 py-3 flex items-center gap-1 shrink-0">
+                <div className="bg-white dark:bg-gray-800 px-2 py-3 flex items-center gap-1 shrink-0 border-b border-gray-100 dark:border-gray-800">
                    <button 
                     onClick={() => setSearchParams({})}
                     className="p-2 text-gray-900 dark:text-white"
                   >
-                    <ArrowRight className="w-5 h-5 rotate-180" />
+                    <ChevronLeft className="w-6 h-6" />
                   </button>
                   <div className="flex-1 min-w-0">
                     <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">{customer.name}</h3>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">You, Aron Asmerom</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium truncate">You, Aron Asmerom, Teklehaimanot Afeworki</p>
                   </div>
                   <div className="flex items-center gap-1">
                     <button className="p-2 text-[#4c6ef5]"><UserPlus className="w-5 h-5" /></button>
                     <button 
                       onClick={() => exportToPDF(customer, transactions)}
-                      className="p-2 text-gray-400"
+                      className="p-2 text-[#4c6ef5]"
                     >
-                      <div className="border-[1.5px] border-gray-400 rounded px-0.5 py-0">
-                        <span className="text-[8px] font-black leading-none">PDF</span>
+                      <div className="border-[1.5px] border-[#4c6ef5] rounded px-0.5 py-0">
+                        <span className="text-[7px] font-black leading-none uppercase">PDF</span>
                       </div>
                     </button>
                     <button className="p-2 text-[#4c6ef5]"><MoreVertical className="w-5 h-5" /></button>
@@ -1610,31 +1615,31 @@ export default function CustomerLedger() {
 
                   {/* Search and Quick Filters (Mobile Only) */}
                   {!isDesktop && (
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4c6ef5] dark:text-indigo-400" />
+                    <div className="space-y-4">
+                      <div className="relative mx-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input 
                           type="text" 
                           placeholder="Search by remark or amount" 
-                          className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-xl text-sm placeholder-gray-400 dark:placeholder:text-gray-500 dark:text-white focus:ring-0 shadow-sm outline-none"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-lg text-sm placeholder-gray-400 dark:placeholder:text-gray-500 dark:text-white focus:ring-0 shadow-sm outline-none"
+                          value={innerSearchTerm}
+                          onChange={(e) => setInnerSearchTerm(e.target.value)}
                         />
                       </div>
-                      <div className="flex items-center gap-2 overflow-x-auto pb-2 px-4 scrollbar-hide">
-                        <button className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm shrink-0 border border-transparent">
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide px-1">
+                        <button className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm shrink-0 border border-gray-200 dark:border-gray-700">
                           <Filter className="w-4 h-4 text-[#4c6ef5]" />
                         </button>
-                        <button className="px-3 py-1.5 bg-white dark:bg-gray-800 rounded-full shadow-sm text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1 shrink-0 border border-transparent">
-                          <Calendar className="w-3 h-3 text-gray-400" />
+                        <button className="px-4 py-2 bg-white dark:bg-gray-800 rounded-full shadow-sm text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 shrink-0 border border-gray-200 dark:border-gray-700">
+                          <Calendar className="w-4 h-4 text-gray-400" />
                           Select Date
                           <ChevronDown className="w-3 h-3 text-gray-400" />
                         </button>
-                        <button className="px-3 py-1.5 bg-white dark:bg-gray-800 rounded-full shadow-sm text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1 shrink-0 border border-transparent">
+                        <button className="px-4 py-2 bg-white dark:bg-gray-800 rounded-full shadow-sm text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 shrink-0 border border-gray-200 dark:border-gray-700">
                           Entry Type
                           <ChevronDown className="w-3 h-3 text-gray-400" />
                         </button>
-                        <button className="px-3 py-1.5 bg-white dark:bg-gray-800 rounded-full shadow-sm text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1 shrink-0 border border-transparent">
+                        <button className="px-4 py-2 bg-white dark:bg-gray-800 rounded-full shadow-sm text-[12px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 shrink-0 border border-gray-200 dark:border-gray-700">
                           Members
                           <ChevronDown className="w-3 h-3 text-gray-400" />
                         </button>
@@ -1654,7 +1659,7 @@ export default function CustomerLedger() {
                           <div className="flex-1 min-w-0">
                             <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-0.5">Total Payments</p>
                             <p className="text-lg font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
-                              {(customer.totalIn || 0).toLocaleString()}
+                              {Math.round(customer.totalIn || 0).toLocaleString()}
                             </p>
                           </div>
                         </div>
@@ -1667,7 +1672,7 @@ export default function CustomerLedger() {
                           <div className="flex-1 min-w-0">
                             <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-0.5">Outstanding Balance</p>
                             <p className="text-lg font-black text-gray-900 dark:text-white tracking-tight font-mono truncate">
-                              {(customer.outstandingBalance || 0).toLocaleString()}
+                              {Math.round(customer.outstandingBalance || 0).toLocaleString()}
                             </p>
                           </div>
                         </div>
@@ -1683,39 +1688,39 @@ export default function CustomerLedger() {
                               "text-lg font-black tracking-tight font-mono truncate",
                               customer.totalOwed > 0 ? "text-red-600" : "text-green-600"
                             )}>
-                              {customer.totalOwed.toLocaleString()}
+                              {Math.round(customer.totalOwed).toLocaleString()}
                             </p>
                           </div>
                         </div>
                       </div>
                     ) : (
                       /* Mobile Summary Card (Matching Screenshot Design) */
-                      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border dark:border-gray-700 overflow-hidden divide-y dark:divide-gray-700">
-                        <div className="flex justify-between items-center px-4 py-3 bg-gray-50/30 dark:bg-gray-800/30">
+                      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden divide-y dark:divide-gray-700">
+                        <div className="flex justify-between items-center px-4 py-3 bg-white dark:bg-gray-800">
                           <span className="text-[14px] font-bold text-gray-900 dark:text-white">Net Balance</span>
                           <span className={cn(
-                            "text-[16px] font-black font-mono",
-                            customer.totalOwed > 0 ? "text-red-600" : "text-green-600"
+                            "text-[14px] font-bold",
+                            customer.totalOwed > 0 ? "text-gray-900" : "text-[#00875a]"
                           )}>
-                            {customer.totalOwed.toLocaleString()}
+                            {customer.totalOwed > 0 ? '-' : ''}{Math.round(Math.abs(customer.totalOwed)).toLocaleString()}
                           </span>
                         </div>
-                        <div className="px-4 py-3 space-y-2">
+                        <div className="px-4 py-3 space-y-3">
                           <div className="flex justify-between items-center">
-                            <span className="text-[12px] font-bold text-gray-500 dark:text-gray-400">Total In (+)</span>
-                            <span className="text-green-600 text-[13px] font-bold font-mono">
-                              {(customer.totalIn || 0).toLocaleString()}
+                            <span className="text-[14px] font-bold text-gray-900 dark:text-white">Total In (+)</span>
+                            <span className="text-[#00875a] text-[14px] font-bold">
+                              {Math.round(customer.totalIn || 0).toLocaleString()}
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-[12px] font-bold text-gray-500 dark:text-gray-400">Total Out (-)</span>
-                            <span className="text-red-600 text-[13px] font-bold font-mono">
-                              {(customer.outstandingBalance || 0).toLocaleString()}
+                            <span className="text-[14px] font-bold text-gray-900 dark:text-white">Total Out (-)</span>
+                            <span className="text-[#de350b] text-[14px] font-bold">
+                              {Math.round(customer.outstandingBalance || 0).toLocaleString()}
                             </span>
                           </div>
                         </div>
-                        <button className="w-full flex items-center justify-center gap-2 py-2.5 text-[#4c6ef5] text-[11px] font-black uppercase tracking-wider">
-                          VIEW REPORTS <ChevronRight className="w-4 h-4" />
+                        <button className="w-full flex items-center justify-center gap-2 py-3 text-[#4c6ef5] text-[12px] font-black uppercase tracking-wider">
+                          VIEW REPORTS <ChevronRight className="w-4 h-4 ml-1" />
                         </button>
                       </div>
                     )}
@@ -1728,10 +1733,10 @@ export default function CustomerLedger() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 group-focus-within:text-indigo-500 transition-colors" />
                         <input 
                           type="text" 
-                          placeholder="Search records, items, or value..." 
+                          placeholder="Search record details, items, or amount..." 
                           className="w-full pl-9 pr-12 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-xs focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm focus:border-indigo-500 outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 dark:text-white"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
+                          value={innerSearchTerm}
+                          onChange={(e) => setInnerSearchTerm(e.target.value)}
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1742,7 +1747,11 @@ export default function CustomerLedger() {
                           <Plus className="w-3.5 h-3.5" /> New Sale
                         </button>
                         <button 
-                          onClick={() => { setSelectedCustomerForPayment(customer); setIsPaymentModalOpen(true); }}
+                          onClick={() => { 
+                            resetPaymentForm();
+                            setSelectedCustomerForPayment(customer); 
+                            setIsPaymentModalOpen(true); 
+                          }}
                           className="px-5 py-2 bg-[#de350b] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#bf2d09] transition-all shadow-lg shadow-red-500/10 active:scale-95 flex items-center gap-2"
                         >
                           <Minus className="w-3.5 h-3.5" /> Payment
@@ -1928,7 +1937,12 @@ export default function CustomerLedger() {
                       </div>
                     ) : (
                       /* Mobile List (Grouped by Date) */
-                      <div className="space-y-6">
+                      <div className="space-y-2 mt-1 px-1 pb-4">
+                        {/* Show entry count like in screenshot */}
+                        <div className="text-center mb-1">
+                          <p className="text-[12px] font-bold text-gray-400">Showing {transactions.length} entries</p>
+                        </div>
+
                         {(() => {
                           const initialBalanceUSD = customer.initialBalanceCurrency === 'SSP' 
                             ? (customer.initialBalance || 0) / 1000 
@@ -1943,46 +1957,70 @@ export default function CustomerLedger() {
                           });
 
                           const grouped = computed.reverse().reduce((acc: any, item) => {
-                            const date = format(parseISO(item.timestamp), 'dd MMMM yyyy');
+                            const date = format(parseISO(item.timestamp), 'dd MMM yyyy');
                             if (!acc[date]) acc[date] = [];
                             acc[date].push(item);
                             return acc;
                           }, {});
 
-                          return Object.entries(grouped).map(([date, items]: [string, any]) => (
-                            <div key={date} className="space-y-3">
-                              <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{date}</h4>
-                              <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-sm border dark:border-gray-700">
+                          return Object.entries(grouped).map(([date, items]: [string, any], gIdx: number) => (
+                            <div key={date} className={cn("space-y-1", gIdx !== 0 && "pt-3 border-t-4 border-double border-gray-300 dark:border-gray-600")}>
+                              <h4 className="text-[12px] font-bold text-gray-500 dark:text-gray-400 ml-1 mb-1">{date}</h4>
+                              <div className="space-y-2">
                                 {items.map((item: any, idx: number) => (
                                   <div 
                                     key={item.id}
                                     onClick={() => handleEditTransaction(item, customer)}
                                     className={cn(
-                                      "p-4 flex gap-3 items-start cursor-pointer transition-colors active:bg-gray-50 dark:active:bg-gray-700",
-                                      idx !== items.length - 1 && "border-b dark:border-gray-700",
-                                      selectedTransactions.includes(item.id) && "bg-indigo-50/50 dark:bg-indigo-900/10"
+                                      "px-1 py-0.5 flex flex-col gap-0.5 cursor-pointer transition-colors active:bg-gray-50 dark:active:bg-gray-700",
+                                      idx !== items.length - 1 && "border-b border-gray-200 dark:border-gray-700 pb-2"
                                     )}
                                   >
-                                    <div 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleTransactionSelection(item.id);
-                                      }}
-                                      className="pt-1 flex items-center shrink-0"
-                                    >
-                                      <input 
-                                        type="checkbox" 
-                                        checked={selectedTransactions.includes(item.id)}
-                                        readOnly
-                                        className="rounded-md border-gray-300 text-indigo-600 focus:ring-4 focus:ring-indigo-500/20 w-4 h-4 cursor-pointer" 
-                                      />
-                                    </div>
-
-                                    <div className="space-y-2 min-w-0 flex-1 pr-4 text-left">
-                                      <p className="text-[13px] font-medium text-gray-900 dark:text-white leading-tight">
+                                    <div className="flex justify-between items-start">
+                                      {/* Left Side: Remark */}
+                                      <p className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight break-words flex-1 pr-4">
                                         {item.notes || (item.isPayment ? 'Repayment Settlement' : item.isExpense ? 'Operational Expense' : (item.items?.[0]?.name || 'Direct Credit Sale Account'))}
                                       </p>
-                                      <div className="flex flex-wrap gap-2 mt-1">
+                                      
+                                      {/* Right Side: Amount */}
+                                      <div className="text-right shrink-0">
+                                        <p className={cn(
+                                          "text-[13px] font-bold leading-none mb-0.5",
+                                          item.isPayment || item.isExpense ? "text-[#00875a]" : "text-[#de350b]"
+                                        )}>
+                                          {item.isPayment || item.isExpense ? '+' : '-'}{Math.round(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString()}
+                                        </p>
+                                        <p className="text-[9px] font-bold text-gray-500 dark:text-gray-400">
+                                          Bal: {Math.round(item.bal).toLocaleString()}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Footer: Entry by */}
+                                    <div className="flex items-center gap-2 mt-0">
+                                      <div 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleTransactionSelection(item.id);
+                                        }}
+                                        className="flex items-center shrink-0"
+                                      >
+                                        <input 
+                                          type="checkbox" 
+                                          checked={selectedTransactions.includes(item.id)}
+                                          readOnly
+                                          className="rounded border-gray-300 text-indigo-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer" 
+                                        />
+                                      </div>
+                                      <p className="text-[11px] font-bold text-[#4c6ef5]">
+                                        Entry by You <span className="text-gray-400 font-medium ml-1">at {format(parseISO(item.timestamp), 'h:mm a')}</span>
+                                      </p>
+                                    </div>
+
+
+                                    {/* Attachments Section */}
+                                    {(item.attachments || (item.attachmentUrl ? [{ url: item.attachmentUrl, type: item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image') }] : [])).length > 0 && (
+                                      <div className="flex flex-wrap gap-2 mt-1.5">
                                         {(item.attachments || (item.attachmentUrl ? [{ url: item.attachmentUrl, type: item.attachmentType || (item.attachmentUrl.includes('pdf') ? 'pdf' : 'image') }] : [])).map((att: any, i: number) => (
                                           <button 
                                             key={i}
@@ -1991,57 +2029,14 @@ export default function CustomerLedger() {
                                               setPreviewUrl(att.url);
                                               setPreviewType(att.type);
                                             }}
-                                            className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase tracking-wider"
+                                            className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-wider"
                                           >
                                             {att.type === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                                            {att.type === 'pdf' ? 'PDF' : 'Bill'} {i + 1}
+                                            {att.type === 'pdf' ? 'PDF' : 'BIll'}
                                           </button>
                                         ))}
                                       </div>
-                                      <p className="text-[11px] font-medium text-[#4c6ef5]">Entry by You <span className="text-gray-400 font-normal ml-1">at {format(parseISO(item.timestamp), 'h:mm a')}</span></p>
-                                    </div>
-                                    <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
-                                      <div className="text-right">
-                                        <p className={cn(
-                                          "text-lg font-black leading-none mb-1",
-                                          item.isPayment || item.isExpense ? "text-[#de350b]" : "text-[#00875a]"
-                                        )}>
-                                          {item.isPayment || item.isExpense ? '-' : '+'}{Math.round(item.creditDeductionUSD ?? (item.amount || item.totalAmount)).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                                        </p>
-                                        <p className="text-[10px] font-bold text-gray-400 flex items-center justify-end gap-1">
-                                          <TrendingUp className="w-2.5 h-2.5 opacity-50" />
-                                          Bal: {Math.round(item.bal).toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                                        </p>
-                                        {item.updatedAt && (
-                                          <p className="text-[9px] font-bold text-gray-400 italic mt-0.5">(Edited)</p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1.5">
-                                        <button 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleEditTransaction(item, customer);
-                                          }}
-                                          className="p-2 text-indigo-400 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg active:bg-indigo-100 transition-colors"
-                                        >
-                                          <Edit3 className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setDeleteTransactionInfo({ 
-                                              id: item.id, 
-                                              collection: item.collection, 
-                                              type: item.isPayment ? 'Payment' : item.isExpense ? 'Expense' : 'Sale',
-                                              customerId: customer.id
-                                            });
-                                          }}
-                                          className="p-2 text-rose-400 bg-rose-50 dark:bg-rose-900/40 rounded-lg active:bg-rose-100 transition-colors"
-                                        >
-                                          <Trash className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -2069,7 +2064,11 @@ export default function CustomerLedger() {
                   </button>
                   
                   <button 
-                    onClick={() => { setSelectedCustomerForPayment(customer); setIsPaymentModalOpen(true); }}
+                    onClick={() => { 
+                      resetPaymentForm();
+                      setSelectedCustomerForPayment(customer); 
+                      setIsPaymentModalOpen(true); 
+                    }}
                     className="flex-1 h-11 flex items-center justify-center gap-2 bg-[#de350b] text-white rounded-lg font-black text-[12px] uppercase tracking-widest shadow-md transition-transform active:scale-95"
                   >
                     <Minus className="w-4 h-4" /> PAYMENT
@@ -2254,8 +2253,8 @@ export default function CustomerLedger() {
                 </form>
               </div>
 
-              {/* Sticky Footer */}
-              <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 sticky bottom-0 z-10 shadow-[0_-10px_25px_rgba(0,0,0,0.05)]">
+              {/* Bottom Footer */}
+              <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 mt-auto shadow-[0_-10px_25px_rgba(0,0,0,0.05)] z-20">
                 <button 
                   onClick={() => handleRecordPayment({ preventDefault: () => {} } as any)}
                   disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
@@ -2507,7 +2506,7 @@ export default function CustomerLedger() {
                           )}>
                             {item.isCashIn ? '+' : '-'}
                             {viewingCashCurrency === 'USD' ? '$' : ''}
-                            {item.amount.toLocaleString('en-US')}
+                            {Math.round(item.amount).toLocaleString('en-US')}
                             {viewingCashCurrency === 'SSP' ? ' SSP' : ''}
                           </p>
                         </div>

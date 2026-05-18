@@ -402,7 +402,7 @@ export default function InvoiceManager() {
                     <p className="text-xs text-gray-500 dark:text-gray-400">{format(new Date(sale.timestamp), 'MMM dd, yyyy')}</p>
                     <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                       {sale.isMixed ? (
-                        `$${sale.amountUSD.toLocaleString('en-US')}`
+                        `$${Math.round(sale.amountUSD).toLocaleString('en-US')}`
                       ) : (
                         formatCurrency(sale.totalAmount)
                       )}
@@ -565,7 +565,7 @@ export default function InvoiceManager() {
                           <span className="text-xs font-black text-gray-100 uppercase tracking-[0.2em]">Total Due</span>
                           <span className="text-2xl font-black text-white italic">
                             {selectedSale.isMixed ? (
-                              `$${selectedSale.amountUSD.toLocaleString('en-US')}`
+                              `$${Math.round(selectedSale.amountUSD).toLocaleString('en-US')}`
                             ) : (
                               formatCurrency(selectedSale.totalAmount)
                             )}

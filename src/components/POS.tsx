@@ -768,7 +768,7 @@ export default function POS() {
                     <div key={item.productId} className="flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/30 p-2 rounded-lg border border-gray-100/50 dark:border-gray-800/50">
                        <div className="flex-1 min-w-0">
                          <p className="text-[13px] font-bold dark:text-white whitespace-normal leading-tight">{item.name}</p>
-                         <p className="text-[11px] text-gray-400 font-mono font-medium">{(item.priceAtSale * rate).toLocaleString()} {currency}</p>
+                         <p className="text-[11px] text-gray-400 font-mono font-medium">{Math.round(item.priceAtSale * rate).toLocaleString()} {currency}</p>
                        </div>
                        <div className="flex items-center gap-1 bg-white dark:bg-gray-700 rounded-lg p-1 border border-gray-100 dark:border-gray-600 shrink-0 shadow-sm">
                          <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, -1); }} className="p-1 px-1.5 hover:bg-gray-50 dark:hover:bg-gray-600 rounded text-gray-500 dark:text-gray-400"><Minus className="w-3.5 h-3.5" /></button>
@@ -964,7 +964,7 @@ export default function POS() {
                     </div>
                     <div>
                       <p className={cn("font-black text-sm uppercase tracking-tight", selectedCustomer?.id === customer.id ? "text-white" : "dark:text-white")}>{customer.name}</p>
-                      <p className={cn("text-[10px] font-bold uppercase font-mono", selectedCustomer?.id === customer.id ? "text-indigo-100" : "text-gray-400")}>Balance: ${customer.totalOwed?.toLocaleString()}</p>
+                      <p className={cn("text-[10px] font-bold uppercase font-mono", selectedCustomer?.id === customer.id ? "text-indigo-100" : "text-gray-400")}>Balance: ${Math.round(customer.totalOwed || 0).toLocaleString()}</p>
                     </div>
                   </div>
                   {selectedCustomer?.id === customer.id && <CheckCircle2 className="w-5 h-5 text-white" />}

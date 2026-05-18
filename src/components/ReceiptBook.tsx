@@ -161,8 +161,8 @@ export default function ReceiptBook() {
                   <td className="px-6 py-4 text-sm font-black text-gray-900">
                     {sale.isMixed ? (
                       <div className="flex flex-col items-start leading-tight">
-                        <span>${sale.amountUSD.toLocaleString('en-US')}</span>
-                        <span className="text-xs text-gray-400 italic font-medium">{sale.amountSSP.toLocaleString('en-US')} SSP</span>
+                        <span>${Math.round(sale.amountUSD).toLocaleString('en-US')}</span>
+                        <span className="text-xs text-gray-400 italic font-medium">{Math.round(sale.amountSSP).toLocaleString('en-US')} SSP</span>
                       </div>
                     ) : (
                       formatCurrency(sale.totalAmount)
@@ -225,8 +225,8 @@ export default function ReceiptBook() {
                 <div className="text-right shrink-0">
                   {sale.isMixed ? (
                     <div className="flex flex-col items-end leading-tight">
-                      <p className="text-sm font-black text-gray-900">${sale.amountUSD.toLocaleString('en-US')}</p>
-                      <p className="text-[10px] font-bold text-gray-400 italic">{sale.amountSSP.toLocaleString('en-US')} SSP</p>
+                      <p className="text-sm font-black text-gray-900">${Math.round(sale.amountUSD).toLocaleString('en-US')}</p>
+                      <p className="text-[10px] font-bold text-gray-400 italic">{Math.round(sale.amountSSP).toLocaleString('en-US')} SSP</p>
                     </div>
                   ) : (
                     <p className="text-sm font-black text-gray-900">{formatCurrency(sale.totalAmount)}</p>

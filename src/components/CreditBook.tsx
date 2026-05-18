@@ -72,7 +72,10 @@ export default function CreditBook() {
 
   const filteredSales = useMemo(() => {
     return sales.filter(sale => {
-      const matchesSearch = (sale.customerName || 'Guest').toLowerCase().includes(searchTerm.toLowerCase());
+      const searchLower = searchTerm.toLowerCase();
+      const matchesCustomer = (sale.customerName || 'Guest').toLowerCase().includes(searchLower);
+      const matchesItems = sale.items.some(item => item.name.toLowerCase().includes(searchLower));
+      const matchesSearch = matchesCustomer || matchesItems;
       const matchesDate = filterDate ? sale.timestamp.startsWith(filterDate) : true;
       return matchesSearch && matchesDate;
     });
@@ -122,7 +125,7 @@ export default function CreditBook() {
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     doc.text(`Generated on: ${format(new Date(), 'PPP p')}`, 14, 38);
-    doc.text(`Total Credit Value: $${sales.reduce((acc, s) => acc + s.totalAmount, 0).toLocaleString()}`, 14, 43);
+    doc.text(`Total Credit Value: $${Math.round(sales.reduce((acc, s) => acc + s.totalAmount, 0)).toLocaleString()}`, 14, 43);
 
     const tableData: any[] = [];
     sales.forEach(sale => {
@@ -132,9 +135,9 @@ export default function CreditBook() {
           index === 0 ? (sale.customerName || 'Guest Session') : '',
           item.name,
           item.quantity,
-          `$${item.priceAtSale.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-          `$${(item.priceAtSale * item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-          index === 0 ? `$${sale.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''
+          `$${Math.round(item.priceAtSale).toLocaleString()}`,
+          `$${Math.round(item.priceAtSale * item.quantity).toLocaleString()}`,
+          index === 0 ? `$${Math.round(sale.totalAmount).toLocaleString()}` : ''
         ]);
       });
     });
@@ -250,7 +253,7 @@ export default function CreditBook() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search accounts..."
+            placeholder="Search credits by account or item..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 h-11 sm:h-10 bg-gray-50 dark:bg-gray-900 border-none rounded-xl sm:rounded-lg text-sm sm:text-xs font-bold dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
@@ -321,7 +324,7 @@ export default function CreditBook() {
                   <div className="text-right sm:ml-4">
                     <p className="text-[7px] sm:text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mb-0.5">Value</p>
                     <p className="text-lg sm:text-xl font-black text-gray-900 dark:text-white font-mono leading-none">
-                      ${daySales.reduce((acc, s) => acc + s.totalAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                      ${Math.round(daySales.reduce((acc, s) => acc + s.totalAmount, 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
                     </p>
                   </div>
                 </div>
