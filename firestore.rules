@@ -31,8 +31,11 @@ service cloud.firestore {
     function isBusinessMember(businessId) {
       return isSignedIn() && (
         isAdmin() || (
-          exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.businessId == businessId
+          exists(/databases/$(database)/documents/businesses/$(businessId)) && (
+            get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid ||
+            (get(/databases/$(database)/documents/businesses/$(businessId)).data.keys().hasAll(['staffUids']) &&
+             request.auth.uid in get(/databases/$(database)/documents/businesses/$(businessId)).data.staffUids)
+          )
         )
       );
     }
@@ -43,7 +46,6 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'businessId', 'email', 'displayName']) &&
-             data.keys().size() == 4 &&
              data.uid == request.auth.uid &&
              data.businessId is string &&
              data.email is string &&
@@ -53,8 +55,8 @@ service cloud.firestore {
     function isValidBusiness(data) {
       return data.keys().hasAll(['name', 'ownerId', 'createdAt']) &&
              data.name is string &&
-             data.ownerId == request.auth.uid &&
-             data.createdAt == request.time;
+             data.ownerId is string &&
+             (data.createdAt is string || data.createdAt is timestamp);
     }
 
     function isValidProduct(data) {
@@ -131,13 +133,18 @@ service cloud.firestore {
     match /userProfiles/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if isSignedIn() && isValidUserProfile(incoming()) && uid == request.auth.uid;
-      allow update: if isSignedIn() && request.auth.uid == uid && isValidUserProfile(incoming());
+      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin()) && isValidUserProfile(incoming());
     }
 
     match /businesses/{businessId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
-      allow create: if isSignedIn() && isValidBusiness(incoming());
-      allow update: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid) && isValidBusiness(incoming());
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.ownerId == request.auth.uid || 
+        (resource.data.keys().hasAll(['staffUids']) && request.auth.uid in resource.data.staffUids)
+      );
+      allow create: if isSignedIn() && isValidBusiness(incoming()) && incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid) && 
+                    incoming().ownerId == existing().ownerId;
     }
 
     match /products/{productId} {

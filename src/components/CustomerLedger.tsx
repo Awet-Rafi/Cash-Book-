@@ -1158,10 +1158,18 @@ export default function CustomerLedger() {
             <input 
               type="text" 
               placeholder="Search customers..."
-              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 dark:text-white"
+              className="w-full pl-9 pr-10 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1210,10 +1218,18 @@ export default function CustomerLedger() {
             <input 
               type="text" 
               placeholder="Search customers..."
-              className="w-full pl-8 py-3 bg-transparent border-b border-[#e5e1da] dark:border-gray-700 text-sm font-serif italic focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all placeholder:text-[#d6d3d1] dark:placeholder:text-gray-600 dark:text-white"
+              className="w-full pl-8 pr-8 py-3 bg-transparent border-b border-[#e5e1da] dark:border-gray-700 text-sm font-serif italic focus:border-indigo-400 dark:focus:border-indigo-500 outline-none transition-all placeholder:text-[#d6d3d1] dark:placeholder:text-gray-600 dark:text-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1303,7 +1319,8 @@ export default function CustomerLedger() {
               {/* List Item Content */}
               <div 
                 onClick={() => {
-                  setSearchParams({ id: customer.id });
+                  setSearchTerm('');
+                  setSearchParams({ id: customer.id }, { replace: false });
                 }}
                 className="px-2 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-2 cursor-pointer"
               >
@@ -1497,7 +1514,7 @@ export default function CustomerLedger() {
               {isDesktop ? (
                 <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-4 shrink-0 shadow-sm">
                    <button 
-                    onClick={() => setSearchParams({})}
+                    onClick={() => setSearchParams({}, { replace: false })}
                     className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all active:scale-95"
                   >
                     <ArrowRight className="w-5 h-5 text-gray-600 dark:text-gray-400 rotate-180" />
@@ -1567,7 +1584,7 @@ export default function CustomerLedger() {
                 /* Mobile Header matching screenshot */
                 <div className="bg-white dark:bg-gray-800 px-2 py-3 flex items-center gap-1 shrink-0 border-b border-gray-100 dark:border-gray-800">
                    <button 
-                    onClick={() => setSearchParams({})}
+                    onClick={() => setSearchParams({}, { replace: false })}
                     className="p-2 text-gray-900 dark:text-white"
                   >
                     <ChevronLeft className="w-6 h-6" />
@@ -1621,10 +1638,18 @@ export default function CustomerLedger() {
                         <input 
                           type="text" 
                           placeholder="Search by remark or amount" 
-                          className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border-none rounded-lg text-sm placeholder-gray-400 dark:placeholder:text-gray-500 dark:text-white focus:ring-0 shadow-sm outline-none"
+                          className="w-full pl-10 pr-10 py-2 bg-white dark:bg-gray-800 border-none rounded-lg text-sm placeholder-gray-400 dark:placeholder:text-gray-500 dark:text-white focus:ring-0 shadow-sm outline-none"
                           value={innerSearchTerm}
                           onChange={(e) => setInnerSearchTerm(e.target.value)}
                         />
+                        {innerSearchTerm && (
+                          <button 
+                            onClick={() => setInnerSearchTerm('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide px-1">
                         <button className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm shrink-0 border border-gray-200 dark:border-gray-700">
@@ -1738,6 +1763,14 @@ export default function CustomerLedger() {
                           value={innerSearchTerm}
                           onChange={(e) => setInnerSearchTerm(e.target.value)}
                         />
+                        {innerSearchTerm && (
+                          <button 
+                            onClick={() => setInnerSearchTerm('')}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button 
@@ -2114,8 +2147,8 @@ export default function CustomerLedger() {
               </div>
 
               {/* Form Content */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-32 bg-white dark:bg-gray-800">
-                <form onSubmit={handleRecordPayment} className="space-y-4" autoComplete="off">
+              <form onSubmit={handleRecordPayment} className="flex-1 flex flex-col h-full overflow-hidden" autoComplete="off">
+                <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-32 bg-white dark:bg-gray-800">
                   {/* Minimalist Date & Time Row (Matching Screenshot Style) */}
                   <div className="flex items-center justify-between px-1 py-2 border-b border-gray-100 dark:border-gray-700 mb-6">
                     <div className="flex items-center gap-2">
@@ -2250,19 +2283,19 @@ export default function CustomerLedger() {
                       </div>
                     )}
                   </div>
-                </form>
-              </div>
+                </div>
 
-              {/* Bottom Footer */}
-              <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 mt-auto shadow-[0_-10px_25px_rgba(0,0,0,0.05)] z-20">
-                <button 
-                  onClick={() => handleRecordPayment({ preventDefault: () => {} } as any)}
-                  disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
-                  className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-sm uppercase tracking-[0.3em] transition-all disabled:opacity-30 active:scale-[0.98] shadow-xl shadow-indigo-900/20 flex items-center justify-center gap-2"
-                >
-                  {isSubmittingPayment ? 'SAVING...' : 'SAVE'}
-                </button>
-              </div>
+                {/* Bottom Footer */}
+                <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 mt-auto shadow-[0_-10px_25px_rgba(0,0,0,0.05)] z-20">
+                  <button 
+                    type="submit"
+                    disabled={isSubmittingPayment || (!paymentAmountUSD && !paymentAmountSSP)}
+                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-sm uppercase tracking-[0.3em] transition-all disabled:opacity-30 active:scale-[0.98] shadow-xl shadow-indigo-900/20 flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingPayment ? 'SAVING...' : 'SAVE'}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </>
         )}

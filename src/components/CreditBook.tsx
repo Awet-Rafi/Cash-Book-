@@ -6,6 +6,7 @@ import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { 
   Calendar, 
   Search, 
+  X,
   CreditCard, 
   ChevronDown, 
   ChevronUp, 
@@ -256,8 +257,16 @@ export default function CreditBook() {
             placeholder="Search credits by account or item..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 h-11 sm:h-10 bg-gray-50 dark:bg-gray-900 border-none rounded-xl sm:rounded-lg text-sm sm:text-xs font-bold dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+            className="w-full pl-10 pr-10 h-11 sm:h-10 bg-gray-50 dark:bg-gray-900 border-none rounded-xl sm:rounded-lg text-sm sm:text-xs font-bold dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
           />
+          {searchTerm && (
+            <button 
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <div className="flex-1 sm:w-48 relative">

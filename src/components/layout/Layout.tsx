@@ -28,13 +28,16 @@ import {
   Moon,
   Wifi,
   WifiOff,
+  LayoutGrid,
   History as HistoryIcon,
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
 
+import BusinessSwitcher from './BusinessSwitcher';
+
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, isAdmin, businessName, isPinUnlocked, setPinUnlocked } = useAuth();
+  const { user, isAdmin, businessName, allBusinesses, switchBusiness, isPinUnlocked, setPinUnlocked } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -313,13 +316,25 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{isAdmin ? 'Administrator' : 'Staff'}</p>
               </div>
             </div>
-            <button 
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all active:scale-[0.98]"
-            >
-              <LogOut className="w-5 h-5" />
-              Sign Out
-            </button>
+            
+            <div className="px-3 pb-2 space-y-1">
+              {allBusinesses.length > 1 && (
+                <button 
+                  onClick={() => switchBusiness('')}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  Switch System
+                </button>
+              )}
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -331,30 +346,34 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-3 lg:px-6 shrink-0 transition-colors">
-          <div className="flex items-center gap-3">
+        <header className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-2 sm:px-3 lg:px-6 shrink-0 transition-colors">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             <button 
-              className="lg:hidden p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="lg:hidden p-1.5 sm:p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               onClick={() => setIsSidebarOpen(true)}
             >
               <Menu className="w-5 h-5" />
             </button>
             
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-              {allNavItems.find(i => i.path === location.pathname)?.name || 'RAFI'}
-            </h2>
+            <div className="flex items-center gap-1.5 sm:gap-4">
+              <BusinessSwitcher />
+              <div className="h-4 w-[1px] bg-gray-200 dark:bg-gray-700 hidden sm:block" />
+              <h2 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest hidden md:block">
+                {allNavItems.find(i => i.path === location.pathname)?.name || 'RAFI'}
+              </h2>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {location.pathname === '/' && (
-              <>
+              <div className="flex items-center gap-1.5 hidden sm:flex">
                 {isAdmin && (
                   <Link 
                     to="/admin"
                     className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all border border-indigo-100 dark:border-indigo-900/30"
                   >
                     <ShieldCheck className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Admin</span>
+                    <span className="hidden md:inline">Admin</span>
                   </Link>
                 )}
                 <button 
@@ -362,9 +381,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-all border border-red-100 dark:border-red-900/30"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Sign Out</span>
+                  <span className="hidden md:inline">Sign Out</span>
                 </button>
-              </>
+              </div>
             )}
             <button
               onClick={toggleTheme}

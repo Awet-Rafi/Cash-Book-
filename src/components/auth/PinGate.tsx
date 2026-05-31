@@ -11,7 +11,7 @@ interface PinGateProps {
 }
 
 const PinGate: React.FC<PinGateProps> = ({ children }) => {
-  const { businessPin, businessId, user, loading: authLoading, isPinUnlocked, setPinUnlocked } = useAuth();
+  const { businessPin, businessId, businessName, user, loading: authLoading, isPinUnlocked, setPinUnlocked } = useAuth();
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'enter' | 'reset' | 'setup'>('enter');
@@ -171,9 +171,13 @@ const PinGate: React.FC<PinGateProps> = ({ children }) => {
           </div>
           <h2 className="text-2xl font-black uppercase tracking-tighter italic">Security Required</h2>
           <p className="text-indigo-100 dark:text-indigo-200 text-sm font-medium mt-2">
-            {view === 'enter' ? 'Please enter your security PIN to access this section.' : 
-             view === 'setup' ? 'Set up a security PIN for your business.' :
-             'Reset your security PIN.'}
+            {view === 'enter' ? (
+              <>Please enter the PIN for <strong>{businessName}</strong>.</>
+            ) : view === 'setup' ? (
+              <>Set up a security PIN for <strong>{businessName}</strong>.</>
+            ) : (
+              <>Reset PIN for <strong>{businessName}</strong>.</>
+            )}
           </p>
         </div>
 

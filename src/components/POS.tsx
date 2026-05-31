@@ -222,6 +222,21 @@ export default function POS() {
     }).filter(item => item.quantity > 0));
   };
 
+  const setPrice = (productId: string, value: string) => {
+    const price = parseFloat(value);
+    if (isNaN(price) || price < 0) return;
+    
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        // Convert the input price (in current currency) back to base USD price
+        // priceAtSale stores the unit price in USD
+        const basePrice = currency === 'SSP' ? price / exchangeRate : price;
+        return { ...item, priceAtSale: basePrice };
+      }
+      return item;
+    }));
+  };
+
   const removeFromCart = (productId: string) => {
     setCart(prev => prev.filter(item => item.productId !== productId));
   };
@@ -768,7 +783,17 @@ export default function POS() {
                     <div key={item.productId} className="flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/30 p-2 rounded-lg border border-gray-100/50 dark:border-gray-800/50">
                        <div className="flex-1 min-w-0">
                          <p className="text-[13px] font-bold dark:text-white whitespace-normal leading-tight">{item.name}</p>
-                         <p className="text-[11px] text-gray-400 font-mono font-medium">{Math.round(item.priceAtSale * rate).toLocaleString()} {currency}</p>
+                         <div className="flex items-center gap-1">
+                           <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter shrink-0 opacity-70">Price:</span>
+                           <input 
+                             type="number" 
+                             step="any"
+                             value={currency === 'USD' ? (item.priceAtSale * rate) : Math.round(item.priceAtSale * rate)}
+                             onChange={(e) => setPrice(item.productId, e.target.value)}
+                             className="text-[11px] font-mono font-black text-indigo-600 dark:text-indigo-400 bg-transparent border-b border-dashed border-indigo-200 dark:border-indigo-900/50 focus:border-indigo-500 focus:ring-0 p-0 w-14 sm:w-16 text-left" 
+                           />
+                           <span className="text-[9px] text-gray-400 font-mono font-medium shrink-0">{currency}</span>
+                         </div>
                        </div>
                        <div className="flex items-center gap-1 bg-white dark:bg-gray-700 rounded-lg p-1 border border-gray-100 dark:border-gray-600 shrink-0 shadow-sm">
                          <button onClick={(e) => { e.stopPropagation(); updateQuantity(item.productId, -1); }} className="p-1 px-1.5 hover:bg-gray-50 dark:hover:bg-gray-600 rounded text-gray-500 dark:text-gray-400"><Minus className="w-3.5 h-3.5" /></button>

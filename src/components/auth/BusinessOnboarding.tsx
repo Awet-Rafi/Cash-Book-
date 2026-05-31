@@ -54,6 +54,7 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
           name: businessName.trim(),
           description: description.trim(),
           ownerId: user.uid,
+          staffUids: [],
           pin: hashedPin,
           createdAt: now
         });
@@ -138,7 +139,7 @@ const BusinessOnboarding = ({ onComplete }: { onComplete: () => void }) => {
                 <Lock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <h3 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">Security PIN</h3>
               </div>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4 font-medium">This PIN will be required to access Inventory and Reports.</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-4 font-medium">This PIN will be required to access this shop's data and management tools.</p>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
