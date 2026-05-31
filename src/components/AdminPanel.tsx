@@ -32,7 +32,7 @@ interface UserProfile {
 }
 
 const AdminPanel = () => {
-  const { isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,10 +41,10 @@ const AdminPanel = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isSuperAdmin) {
       fetchUsers();
     }
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -83,7 +83,7 @@ const AdminPanel = () => {
     }
   };
 
-  if (!isAdmin) {
+  if (!isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">

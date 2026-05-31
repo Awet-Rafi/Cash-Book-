@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   businessId: string | null;
   businessName: string | null;
   allBusinesses: any[];
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null, 
   loading: true, 
   isAdmin: false,
+  isSuperAdmin: false,
   businessId: null,
   businessName: null,
   allBusinesses: [],
@@ -37,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [allBusinesses, setAllBusinesses] = useState<any[]>([]);
@@ -148,6 +151,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setBusinessPin(null);
         setIsPinUnlocked(false);
       }
+
+      // Compute dynamic admin privileges (Superadmin OR active business owner)
+      const isSysAdmin = 
+        userEmail?.toLowerCase() === 'tekle.taf@gmail.com' || 
+        userEmail?.toLowerCase() === 'awet16@gmail.com';
+      setIsSuperAdmin(isSysAdmin);
+
+      let isOwnerOfActive = false;
+      if (bId) {
+        const activeBusiness = businessesList.find(b => b.id === bId);
+        if (activeBusiness) {
+          isOwnerOfActive = activeBusiness.role === 'owner';
+        } else {
+          let bDoc;
+          try {
+            bDoc = await getDoc(doc(db, 'businesses', bId));
+            if (bDoc && bDoc.exists() && bDoc.data().ownerId === uid) {
+              isOwnerOfActive = true;
+            }
+          } catch (err) {}
+        }
+      }
+      setIsAdmin(isSysAdmin || isOwnerOfActive);
     } catch (error) {
       console.error("Error fetching user profile:", error);
     } finally {
@@ -205,10 +231,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       clearTimeout(safetyTimeout);
       setUser(user);
-      setIsAdmin(
+      const isSysAdmin = 
         user?.email?.toLowerCase() === 'tekle.taf@gmail.com' || 
-        user?.email?.toLowerCase() === 'awet16@gmail.com'
-      );
+        user?.email?.toLowerCase() === 'awet16@gmail.com';
+      setIsSuperAdmin(isSysAdmin);
+      setIsAdmin(isSysAdmin);
       if (user) {
         setLoading(true);
         fetchUserProfile(user.uid, user.email);
@@ -251,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, 
       loading, 
       isAdmin, 
+      isSuperAdmin,
       businessId, 
       businessName, 
       allBusinesses,

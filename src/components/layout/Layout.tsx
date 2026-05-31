@@ -37,7 +37,7 @@ import {
 import BusinessSwitcher from './BusinessSwitcher';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, isAdmin, businessName, allBusinesses, switchBusiness, isPinUnlocked, setPinUnlocked } = useAuth();
+  const { user, isAdmin, isSuperAdmin, businessName, allBusinesses, switchBusiness, isPinUnlocked, setPinUnlocked } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -153,13 +153,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       }
     ];
 
-    if (isAdmin) {
+    if (isSuperAdmin) {
       groups.find(g => g.title === 'Admin')?.items.push({ name: 'Admin Panel', path: '/admin', icon: ShieldCheck });
     }
     groups.find(g => g.title === 'Admin')?.items.push({ name: 'Settings', path: '/settings', icon: Settings });
 
     return groups.filter(g => g.items.length > 0);
-  }, [isAdmin]);
+  }, [isAdmin, isSuperAdmin]);
 
   // Expand the group that contains the active route
   useEffect(() => {
