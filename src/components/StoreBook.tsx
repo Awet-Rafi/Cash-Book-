@@ -3,13 +3,14 @@ import { collection, onSnapshot, query, where, orderBy, limit, doc, increment, w
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, StockMovement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Search, Package, ArrowUpRight, ArrowDownLeft, RotateCcw, Filter, Calendar, History, TrendingUp, AlertTriangle, X, Paperclip, FileText, Edit3, Trash, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Save, Loader2 } from 'lucide-react';
+import { Search, Package, ArrowUpRight, ArrowDownLeft, RotateCcw, Filter, Calendar, History, TrendingUp, AlertTriangle, X, Paperclip, FileText, Edit3, Trash, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Save, Loader2, FileSpreadsheet, Download } from 'lucide-react';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfDay, isSameDay, parseISO } from 'date-fns';
+import { exportStockMovementsPDF, exportStockMovementsExcel, exportStockStatusPDF, exportStockStatusExcel } from '../lib/exportUtils';
 
 export default function StoreBook() {
-  const { businessId, isAdmin } = useAuth();
+  const { businessId, businessName, isAdmin } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -275,6 +276,48 @@ export default function StoreBook() {
     }
   };
 
+  const handleExportCurrentTabPDF = () => {
+    if (activeTab === 'status') {
+      exportStockStatusPDF(filteredProducts, businessName);
+    } else if (activeTab === 'log') {
+      exportStockMovementsPDF(movementsWithBalance, { title: 'Stock Movements Ledger', products, businessName });
+    } else if (activeTab === 'daily') {
+      exportStockMovementsPDF(movementsWithBalance.filter(m => m.type === 'sale'), { title: 'Daily Sales & Stock Movements', products, businessName });
+    }
+  };
+
+  const handleExportCurrentTabExcel = () => {
+    if (activeTab === 'status') {
+      exportStockStatusExcel(filteredProducts, businessName);
+    } else if (activeTab === 'log') {
+      exportStockMovementsExcel(movementsWithBalance, { title: 'Stock Movements Ledger', products, businessName });
+    } else if (activeTab === 'daily') {
+      exportStockMovementsExcel(movementsWithBalance.filter(m => m.type === 'sale'), { title: 'Daily Sales & Stock Movements', products, businessName });
+    }
+  };
+
+  const handleExportItemPDF = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const itemMovements = movementsWithBalance.filter(m => m.productId === product.id);
+    exportStockMovementsPDF(itemMovements, {
+      title: `${product.name} - Stock Movements`,
+      product,
+      products,
+      businessName
+    });
+  };
+
+  const handleExportItemExcel = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const itemMovements = movementsWithBalance.filter(m => m.productId === product.id);
+    exportStockMovementsExcel(itemMovements, {
+      title: `${product.name} - Stock Movements`,
+      product,
+      products,
+      businessName
+    });
+  };
+
   return (
     <div className="space-y-6 pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -282,34 +325,55 @@ export default function StoreBook() {
           <h2 className="text-2xl font-black text-gray-900 dark:text-white">Stock Movements</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Inventory tracking & stock movement logs.</p>
         </div>
-        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-          <button 
-            onClick={() => setActiveTab('status')}
-            className={cn(
-              "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
-              activeTab === 'status' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            )}
-          >
-            Stock Status
-          </button>
-          <button 
-            onClick={() => setActiveTab('log')}
-            className={cn(
-              "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
-              activeTab === 'log' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            )}
-          >
-            Stock Ledger
-          </button>
-          <button 
-            onClick={() => setActiveTab('daily')}
-            className={cn(
-              "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
-              activeTab === 'daily' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            )}
-          >
-            Daily Sales
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 p-1 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm">
+            <button
+              onClick={handleExportCurrentTabPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors cursor-pointer"
+              title="Print/Download PDF for current view"
+            >
+              <FileText className="w-4 h-4" />
+              <span>PDF</span>
+            </button>
+            <button
+              onClick={handleExportCurrentTabExcel}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors cursor-pointer"
+              title="Download Excel for current view"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Excel</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+            <button 
+              onClick={() => setActiveTab('status')}
+              className={cn(
+                "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
+                activeTab === 'status' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              )}
+            >
+              Stock Status
+            </button>
+            <button 
+              onClick={() => setActiveTab('log')}
+              className={cn(
+                "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
+                activeTab === 'log' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              )}
+            >
+              Stock Ledger
+            </button>
+            <button 
+              onClick={() => setActiveTab('daily')}
+              className={cn(
+                "px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all",
+                activeTab === 'daily' ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              )}
+            >
+              Daily Sales
+            </button>
+          </div>
         </div>
       </div>
 
@@ -405,12 +469,26 @@ export default function StoreBook() {
                           </button>
                           <button 
                             onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteProduct(product.id);
-                            }}
+                               e.stopPropagation();
+                               handleDeleteProduct(product.id);
+                             }}
                             className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-all"
                           >
                             <Trash className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => handleExportItemPDF(product, e)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all cursor-pointer"
+                            title="Export PDF Stock Movements for this product"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => handleExportItemExcel(product, e)}
+                            className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-all cursor-pointer"
+                            title="Export Excel Stock Movements for this product"
+                          >
+                            <FileSpreadsheet className="w-4 h-4" />
                           </button>
                           <button 
                             onClick={(e) => {
@@ -870,8 +948,27 @@ export default function StoreBook() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="text-right hidden sm:block">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700 rounded-xl">
+                  <button
+                    onClick={() => handleExportItemPDF(selectedProduct)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors cursor-pointer"
+                    title="Export PDF for this item's movements"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Print PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportItemExcel(selectedProduct)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors cursor-pointer"
+                    title="Export Excel for this item's movements"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Excel</span>
+                  </button>
+                </div>
+
+                <div className="text-right hidden sm:block pl-2 border-l border-gray-200 dark:border-gray-700">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Current Stock</p>
                   <p className={cn("text-xl font-black", selectedProduct.stockQuantity <= 5 ? "text-rose-500" : "text-gray-900 dark:text-white")}>
                     {selectedProduct.stockQuantity}

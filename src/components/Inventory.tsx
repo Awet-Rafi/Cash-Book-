@@ -3,12 +3,13 @@ import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimest
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product } from '../types';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
-import { Plus, Search, Edit2, Trash2, Package, X, AlertCircle, RotateCcw, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Package, X, AlertCircle, RotateCcw, ArrowUpRight, ArrowDownLeft, FileText, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { exportStockStatusPDF, exportStockStatusExcel } from '../lib/exportUtils';
 
 export default function Inventory() {
-  const { isAdmin, businessId } = useAuth();
+  const { isAdmin, businessId, businessName } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -204,15 +205,35 @@ export default function Inventory() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        {isAdmin && (
-          <button 
-            onClick={() => handleOpenModal()}
-            className="flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none"
-          >
-            <Plus className="w-5 h-5" />
-            Add Product
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-white dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+            <button
+              onClick={() => exportStockStatusPDF(filteredProducts, businessName)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors cursor-pointer"
+              title="Print/Download PDF Inventory Report"
+            >
+              <FileText className="w-4 h-4" />
+              <span>PDF</span>
+            </button>
+            <button
+              onClick={() => exportStockStatusExcel(filteredProducts, businessName)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors cursor-pointer"
+              title="Download Excel Inventory Report"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Excel</span>
+            </button>
+          </div>
+          {isAdmin && (
+            <button 
+              onClick={() => handleOpenModal()}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none shrink-0"
+            >
+              <Plus className="w-5 h-5" />
+              Add Product
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
