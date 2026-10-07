@@ -536,7 +536,7 @@ export default function CustomerLedger() {
       return;
     }
 
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach((file: File) => {
       if (file.size > 800000) { // ~800KB limit
         alert(`File ${file.name} is too large. Please select a file smaller than 800KB.`);
         return;
@@ -564,26 +564,42 @@ export default function CustomerLedger() {
     const doc = new jsPDF();
     doc.setFontSize(18);
     doc.setTextColor(79, 70, 229); // Indigo
-    doc.text(`Statement of Account: ${customer.name}`, 14, 22);
+    doc.text(`Statement of Account: ${customer.name || 'Customer'}`, 14, 22);
     
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
     doc.text(`Report Generated: ${format(new Date(), 'PPP p')}`, 14, 32);
     
+    const customerNetBalance = typeof customer.totalOwed === 'number' && !isNaN(customer.totalOwed)
+      ? customer.totalOwed
+      : (Number(customer.totalOwed) || 0);
+
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Net Balance: ${formatCurrency(customer.totalOwed)}`, 14, 42);
+    doc.text(`Net Balance: ${formatCurrency(customerNetBalance)}`, 14, 42);
 
     let runningBalance = customer.initialBalanceCurrency === 'SSP' 
-      ? (customer.initialBalance || 0) / 1000 
-      : (customer.initialBalance || 0);
+      ? (Number(customer.initialBalance) || 0) / 1000 
+      : (Number(customer.initialBalance) || 0);
+    if (isNaN(runningBalance)) runningBalance = 0;
 
     const tableData: any[] = [];
     
+    const formatTimestamp = (ts: any, formatStr: string = 'dd/MM/yyyy HH:mm') => {
+      if (!ts) return '-';
+      try {
+        const d = typeof ts === 'object' && ts.toDate ? ts.toDate() : new Date(ts);
+        return isNaN(d.getTime()) ? '-' : format(d, formatStr);
+      } catch {
+        return '-';
+      }
+    };
+
     // Add initial balance row FIRST
-    if (customer.initialBalance && customer.initialBalance !== 0) {
+    const initBalNum = Number(customer.initialBalance) || 0;
+    if (initBalNum !== 0) {
       tableData.push([
-        '-',
+        formatTimestamp(customer.createdAt, 'dd/MM/yyyy') || '-',
         'Initial Opening Balance',
         runningBalance > 0 ? `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
         runningBalance < 0 ? `$${Math.round(Math.abs(runningBalance)).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
@@ -592,21 +608,32 @@ export default function CustomerLedger() {
     }
 
     // Sort transactions by date (Oldest first)
-    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sortedTransactions = [...transactions].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeA - timeB;
+    });
 
     sortedTransactions.forEach(item => {
       const isSSP = item.currency === 'SSP';
-      const rate = item.exchangeRate || 1000;
+      const rate = Number(item.exchangeRate) || 1000;
       
       if (!item.isPayment && !item.isExpense && item.items && item.items.length > 0) {
         // Itemize Sales
         item.items.forEach((subItem: any) => {
-          const subTotalUSD = isSSP ? ((subItem.price * subItem.quantity) / rate) : (subItem.price * subItem.quantity);
-          runningBalance += subTotalUSD;
+          const itemPrice = Number(subItem.priceAtSale ?? subItem.price ?? 0) || 0;
+          const itemQty = Number(subItem.quantity ?? 1) || 1;
+          const rawTotal = itemPrice * itemQty;
+          const subTotalUSD = isSSP ? (rawTotal / rate) : rawTotal;
+          const safeSubTotal = isNaN(subTotalUSD) ? 0 : subTotalUSD;
+          
+          runningBalance += safeSubTotal;
+          if (isNaN(runningBalance)) runningBalance = 0;
+
           tableData.push([
-            format(new Date(item.timestamp), 'dd/MM/yyyy HH:mm'),
-            `${subItem.name} (x${subItem.quantity})`,
-            `$${Math.round(subTotalUSD).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+            formatTimestamp(item.timestamp),
+            `${subItem.name || 'Item'} (x${itemQty})`,
+            `$${Math.round(safeSubTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
             '-',
             `$${Math.round(runningBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
           ]);
@@ -615,11 +642,19 @@ export default function CustomerLedger() {
         // Payments or expenses or sales without item array
         let amountUSD = 0;
         if (item.collection === 'payments') {
-          amountUSD = item.creditDeductionUSD ?? (isSSP ? (item.amount / rate) : item.amount);
+          const creditDeduction = Number(item.creditDeductionUSD);
+          if (!isNaN(creditDeduction) && creditDeduction > 0) {
+            amountUSD = creditDeduction;
+          } else {
+            const rawAmount = Number(item.amount) || 0;
+            amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
+          }
         } else {
-          const rawAmount = item.amount || item.totalAmount;
+          const rawAmount = Number(item.amount ?? item.totalAmount ?? 0) || 0;
           amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
         }
+        
+        if (isNaN(amountUSD)) amountUSD = 0;
         
         const isEntryPositive = !item.isPayment && !item.isExpense;
         const sales = isEntryPositive ? amountUSD : 0;
@@ -627,9 +662,10 @@ export default function CustomerLedger() {
         
         runningBalance += sales;
         runningBalance -= payments;
+        if (isNaN(runningBalance)) runningBalance = 0;
 
         tableData.push([
-          format(new Date(item.timestamp), 'dd/MM/yyyy HH:mm'),
+          formatTimestamp(item.timestamp),
           item.notes || (item.isPayment ? (item.collection === 'expenses' ? 'Expense' : 'Payment') : 'Sale'),
           sales > 0 ? `$${Math.round(sales).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
           payments > 0 ? `$${Math.round(payments).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-',
@@ -660,25 +696,42 @@ export default function CustomerLedger() {
       styles: { fontSize: 9 }
     });
 
-    doc.save(`${customer.name}_statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    const safeFilename = (customer.name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+    doc.save(`${safeFilename}_statement_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
   };
 
   const exportToExcel = (customer: any, transactions: any[]) => {
     let runningBalance = customer.initialBalanceCurrency === 'SSP' 
-      ? (customer.initialBalance || 0) / 1000 
-      : (customer.initialBalance || 0);
+      ? (Number(customer.initialBalance) || 0) / 1000 
+      : (Number(customer.initialBalance) || 0);
+    if (isNaN(runningBalance)) runningBalance = 0;
+
+    const netBalNum = typeof customer.totalOwed === 'number' && !isNaN(customer.totalOwed)
+      ? customer.totalOwed
+      : (Number(customer.totalOwed) || 0);
 
     const worksheetData: any[] = [
-      ['Statement of Account', customer.name],
+      ['Statement of Account', customer.name || 'Customer'],
       ['Generated On', format(new Date(), 'PPP p')],
-      ['Net Balance', Math.round(customer.totalOwed)],
+      ['Net Balance (USD)', Math.round(netBalNum)],
       [], // Spacer row
       ['Date', 'Description / Item', 'Sales (+)', 'Payments (-)', 'Balance']
     ];
 
-    if (customer.initialBalance && customer.initialBalance !== 0) {
+    const formatTimestamp = (ts: any, formatStr: string = 'yyyy-MM-dd HH:mm') => {
+      if (!ts) return '-';
+      try {
+        const d = typeof ts === 'object' && ts.toDate ? ts.toDate() : new Date(ts);
+        return isNaN(d.getTime()) ? '-' : format(d, formatStr);
+      } catch {
+        return '-';
+      }
+    };
+
+    const initBalNum = Number(customer.initialBalance) || 0;
+    if (initBalNum !== 0) {
       worksheetData.push([
-        format(new Date(customer.createdAt), 'yyyy-MM-dd'),
+        formatTimestamp(customer.createdAt, 'yyyy-MM-dd') || '-',
         'Initial Opening Balance',
         runningBalance > 0 ? Math.round(runningBalance) : '-',
         runningBalance < 0 ? Math.round(Math.abs(runningBalance)) : '-',
@@ -686,20 +739,31 @@ export default function CustomerLedger() {
       ]);
     }
 
-    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const sortedTransactions = [...transactions].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeA - timeB;
+    });
 
     sortedTransactions.forEach(item => {
       const isSSP = item.currency === 'SSP';
-      const rate = item.exchangeRate || 1000;
+      const rate = Number(item.exchangeRate) || 1000;
       
       if (!item.isPayment && !item.isExpense && item.items && item.items.length > 0) {
         item.items.forEach((subItem: any) => {
-          const subTotalUSD = isSSP ? ((subItem.price * subItem.quantity) / rate) : (subItem.price * subItem.quantity);
-          runningBalance += subTotalUSD;
+          const itemPrice = Number(subItem.priceAtSale ?? subItem.price ?? 0) || 0;
+          const itemQty = Number(subItem.quantity ?? 1) || 1;
+          const rawTotal = itemPrice * itemQty;
+          const subTotalUSD = isSSP ? (rawTotal / rate) : rawTotal;
+          const safeSubTotal = isNaN(subTotalUSD) ? 0 : subTotalUSD;
+          
+          runningBalance += safeSubTotal;
+          if (isNaN(runningBalance)) runningBalance = 0;
+
           worksheetData.push([
-            format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm'),
-            `${subItem.name} (x${subItem.quantity})`,
-            Math.round(subTotalUSD),
+            formatTimestamp(item.timestamp),
+            `${subItem.name || 'Item'} (x${itemQty})`,
+            Math.round(safeSubTotal),
             '-',
             Math.round(runningBalance)
           ]);
@@ -707,11 +771,19 @@ export default function CustomerLedger() {
       } else {
         let amountUSD = 0;
         if (item.collection === 'payments') {
-          amountUSD = item.creditDeductionUSD ?? (isSSP ? (item.amount / rate) : item.amount);
+          const creditDeduction = Number(item.creditDeductionUSD);
+          if (!isNaN(creditDeduction) && creditDeduction > 0) {
+            amountUSD = creditDeduction;
+          } else {
+            const rawAmount = Number(item.amount) || 0;
+            amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
+          }
         } else {
-          const rawAmount = item.amount || item.totalAmount;
+          const rawAmount = Number(item.amount ?? item.totalAmount ?? 0) || 0;
           amountUSD = isSSP ? (rawAmount / rate) : rawAmount;
         }
+        
+        if (isNaN(amountUSD)) amountUSD = 0;
         
         const isEntryPositive = !item.isPayment && !item.isExpense;
         const sales = isEntryPositive ? amountUSD : 0;
@@ -719,9 +791,10 @@ export default function CustomerLedger() {
         
         runningBalance += sales;
         runningBalance -= payments;
+        if (isNaN(runningBalance)) runningBalance = 0;
 
         worksheetData.push([
-          format(new Date(item.timestamp), 'yyyy-MM-dd HH:mm'),
+          formatTimestamp(item.timestamp),
           item.notes || (item.isPayment ? (item.collection === 'expenses' ? 'Expense' : 'Payment') : 'Sale'),
           sales > 0 ? Math.round(sales) : '-',
           payments > 0 ? Math.round(payments) : '-',
@@ -733,7 +806,8 @@ export default function CustomerLedger() {
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Statement');
-    XLSX.writeFile(workbook, `${customer.name}_statement.xlsx`);
+    const safeFilename = (customer.name || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(workbook, `${safeFilename}_statement_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const exportCashBookToPDF = (currency: 'USD' | 'SSP', transactions: any[], balance: number) => {

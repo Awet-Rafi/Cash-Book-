@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { Component, useState, lazy, Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -38,13 +38,21 @@ const ForceReset = () => {
 };
 
 // Error Boundary
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-  constructor(props: { children: React.ReactNode }) {
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: any;
+}
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  override state: ErrorBoundaryState = { hasError: false, error: null };
+
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: any) {
+  static getDerivedStateFromError(error: any): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -73,6 +81,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     return this.props.children;
   }
 }
+
+const SafeErrorBoundary = ErrorBoundary as unknown as React.ComponentType<{ children: React.ReactNode }>;
 
 const AppContent = () => {
   const { user, loading, businessId, allBusinesses, refreshProfile } = useAuth();
@@ -184,7 +194,7 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <ErrorBoundary>
+    <SafeErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
           <Router>
@@ -192,6 +202,6 @@ export default function App() {
           </Router>
         </AuthProvider>
       </ThemeProvider>
-    </ErrorBoundary>
+    </SafeErrorBoundary>
   );
 }

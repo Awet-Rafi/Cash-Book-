@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where, orderBy, limit, doc, increment, w
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, StockMovement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Search, Package, ArrowUpRight, ArrowDownLeft, RotateCcw, Filter, Calendar, History, TrendingUp, AlertTriangle, X, Paperclip, FileText, Edit3, Trash, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Save, Loader2, FileSpreadsheet, Download } from 'lucide-react';
+import { Search, Package, ArrowUpRight, ArrowDownLeft, RotateCcw, Filter, Calendar, History, TrendingUp, AlertTriangle, X, Paperclip, FileText, Edit3, Trash, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Save, Loader2, FileSpreadsheet, Download, Plus } from 'lucide-react';
 import { formatCurrency, cn, safeTimestamp } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfDay, isSameDay, parseISO } from 'date-fns';
@@ -25,6 +25,7 @@ export default function StoreBook() {
   const [isEditProductModalOpen, setIsEditProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productFormData, setProductFormData] = useState({ name: '', category: '', stockQuantity: 0 });
+  const [productArrivedStock, setProductArrivedStock] = useState('');
 
   // Edit Movement Modal
   const [isEditMovementModalOpen, setIsEditMovementModalOpen] = useState(false);
@@ -182,6 +183,19 @@ export default function StoreBook() {
     );
   };
 
+  const handleProductArrivedStockChange = (val: string) => {
+    setProductArrivedStock(val);
+    const baseStock = editingProduct ? editingProduct.stockQuantity : 0;
+    if (val === '') {
+      setProductFormData(prev => ({ ...prev, stockQuantity: baseStock }));
+      return;
+    }
+    const addUnits = parseInt(val, 10);
+    if (!isNaN(addUnits)) {
+      setProductFormData(prev => ({ ...prev, stockQuantity: Math.max(0, baseStock + addUnits) }));
+    }
+  };
+
   const handleEditProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct || !businessId || isProcessing) return;
@@ -195,8 +209,38 @@ export default function StoreBook() {
         stockQuantity: productFormData.stockQuantity,
         updatedAt: serverTimestamp()
       });
+
+      const arrivedUnits = parseInt(productArrivedStock, 10) || 0;
+      if (arrivedUnits > 0) {
+        await addDoc(collection(db, 'stockMovements'), {
+          businessId,
+          productId: editingProduct.id,
+          productName: productFormData.name,
+          type: 'restock',
+          quantity: arrivedUnits,
+          timestamp: serverTimestamp(),
+          notes: `New stock arrival: +${arrivedUnits} units (Total: ${productFormData.stockQuantity})`,
+          referenceId: editingProduct.id
+        });
+      } else {
+        const diff = productFormData.stockQuantity - editingProduct.stockQuantity;
+        if (diff !== 0) {
+          await addDoc(collection(db, 'stockMovements'), {
+            businessId,
+            productId: editingProduct.id,
+            productName: productFormData.name,
+            type: diff > 0 ? 'restock' : 'adjustment',
+            quantity: diff,
+            timestamp: serverTimestamp(),
+            notes: `Manual stock update (${diff > 0 ? '+' : ''}${diff})`,
+            referenceId: editingProduct.id
+          });
+        }
+      }
+
       setIsEditProductModalOpen(false);
       setEditingProduct(null);
+      setProductArrivedStock('');
     } catch (error) {
       console.error("Error updating product:", error);
       alert("Failed to update product. Please try again.");
@@ -732,7 +776,7 @@ export default function StoreBook() {
                     <div className="text-right hidden sm:block">
                       <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Receipts</p>
                       <p className="text-sm font-black text-gray-900 dark:text-white">
-                        {Object.values(data.items).reduce((acc, item) => acc + item.movements.length, 0)}
+                        {(Object.values(data.items) as { qty: number; amount: number; currency: string; movements: StockMovement[] }[]).reduce((acc, item) => acc + item.movements.length, 0)}
                       </p>
                     </div>
                     <div className={cn(
@@ -766,7 +810,7 @@ export default function StoreBook() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                              {Object.entries(data.items).map(([name, item]) => {
+                              {(Object.entries(data.items) as [string, { qty: number; amount: number; currency: string; movements: StockMovement[] }][]).map(([name, item]) => {
                                 const product = products.find(p => p.name === name);
                                 const isExpanded = expandedProducts.includes(`${date}-${name}`);
                                 return (
@@ -1212,25 +1256,25 @@ export default function StoreBook() {
       {/* Edit Product Modal */}
       <AnimatePresence>
         {isEditProductModalOpen && editingProduct && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm overflow-hidden">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl"
+              className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-700 flex flex-col max-h-[calc(100dvh-2rem)] my-auto"
             >
-              <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="px-6 sm:px-8 py-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xl font-black text-gray-900 dark:text-white">Edit Product</h3>
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Update inventory details</p>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-0.5">Update inventory details</p>
                 </div>
-                <button onClick={() => setIsEditProductModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-2xl transition-colors">
+                <button onClick={() => setIsEditProductModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-2xl transition-colors cursor-pointer">
                   <X className="w-5 h-5 text-gray-400" />
                 </button>
               </div>
 
-              <form onSubmit={handleEditProduct} className="p-8 space-y-6">
-                <div className="space-y-4">
+              <form onSubmit={handleEditProduct} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="p-6 sm:p-8 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
                   <div>
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Product Name</label>
                     <input
@@ -1238,7 +1282,7 @@ export default function StoreBook() {
                       required
                       value={productFormData.name}
                       onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
-                      className="w-full px-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-bold"
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-bold"
                     />
                   </div>
                   <div>
@@ -1247,33 +1291,88 @@ export default function StoreBook() {
                       type="text"
                       value={productFormData.category}
                       onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
-                      className="w-full px-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-bold"
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-bold"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 text-indigo-600">Stock Quantity</label>
-                    <div className="relative">
-                      <Package className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
+                  {/* Stock Management with Arrived Stock */}
+                  <div className="p-4 bg-emerald-50/40 dark:bg-emerald-950/20 border-2 border-emerald-200/80 dark:border-emerald-800/60 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-[11px] font-black text-emerald-950 dark:text-emerald-200 uppercase tracking-wider">
+                          Stock & New Arrival
+                        </span>
+                      </div>
+                      {editingProduct && (
+                        <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400">
+                          Current: <strong className="text-gray-900 dark:text-white">{editingProduct.stockQuantity}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider ml-1">
+                          Current Stock
+                        </label>
+                        <div className="px-3.5 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl font-black text-gray-800 dark:text-gray-200 text-sm">
+                          {editingProduct ? editingProduct.stockQuantity : 0}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider ml-1 flex items-center gap-1">
+                          <Plus className="w-3 h-3" />
+                          <span>New Stock Arrived</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="e.g. 20"
+                          value={productArrivedStock}
+                          onChange={(e) => handleProductArrivedStockChange(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-gray-800 border-2 border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-400 outline-none transition-all dark:text-white font-black text-emerald-700 dark:text-emerald-300 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live Calculation Banner */}
+                    {parseInt(productArrivedStock, 10) > 0 && editingProduct && (
+                      <div className="p-2.5 bg-emerald-100/80 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center justify-between text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                        <span>
+                          {editingProduct.stockQuantity} + {parseInt(productArrivedStock, 10)} = <strong className="text-emerald-600 dark:text-emerald-400 text-sm font-black">{editingProduct.stockQuantity + parseInt(productArrivedStock, 10)} Total</strong>
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">
+                          Summed ✓
+                        </span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] font-black text-gray-700 dark:text-gray-300 uppercase tracking-widest ml-1">
+                        Total Resulting Stock
+                      </label>
                       <input
                         type="number"
                         required
                         value={productFormData.stockQuantity}
                         onChange={(e) => setProductFormData({ ...productFormData, stockQuantity: parseInt(e.target.value) || 0 })}
-                        className="w-full pl-12 pr-4 py-3.5 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-black text-lg"
+                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-black text-base"
                       />
                     </div>
-                    <p className="text-[10px] text-gray-500 mt-2 ml-1 italic">Warning: Manual adjustment bypasses movement logs.</p>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {isProcessing ? 'Saving...' : 'Update Product'}
-                </button>
+                <div className="p-5 sm:p-6 bg-gray-50/80 dark:bg-gray-900/80 border-t border-gray-100 dark:border-gray-700 shrink-0">
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isProcessing ? 'Saving...' : 'Update Product'}
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
@@ -1283,27 +1382,27 @@ export default function StoreBook() {
       {/* Edit Movement Modal */}
       <AnimatePresence>
         {isEditMovementModalOpen && editingMovement && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm overflow-hidden">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl"
+              className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl border border-gray-100 dark:border-gray-700 flex flex-col max-h-[calc(100dvh-2rem)] my-auto"
             >
-              <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="px-6 sm:px-8 py-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xl font-black text-gray-900 dark:text-white">Edit Record</h3>
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Movement ID: {editingMovement.id.slice(-6).toUpperCase()}</p>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-0.5">Movement ID: {editingMovement.id.slice(-6).toUpperCase()}</p>
                 </div>
-                <button onClick={() => setIsEditMovementModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-2xl transition-colors">
+                <button onClick={() => setIsEditMovementModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-2xl transition-colors cursor-pointer">
                   <X className="w-5 h-5 text-gray-400" />
                 </button>
               </div>
 
-              <form onSubmit={handleEditMovement} className="p-8 space-y-6">
-                <div className="space-y-4">
-                   <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Target Product</p>
+              <form onSubmit={handleEditMovement} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="p-6 sm:p-8 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
+                   <div className="p-3.5 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Target Product</p>
                     <p className="text-sm font-black text-gray-900 dark:text-white">{editingMovement.productName}</p>
                   </div>
 
@@ -1318,7 +1417,7 @@ export default function StoreBook() {
                         required
                         value={movementFormData.quantity}
                         onChange={(e) => setMovementFormData({ ...movementFormData, quantity: parseInt(e.target.value) || 0 })}
-                        className="w-full pl-12 pr-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-black text-lg"
+                        className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-black text-lg"
                       />
                     </div>
                   </div>
@@ -1329,19 +1428,21 @@ export default function StoreBook() {
                       value={movementFormData.notes}
                       onChange={(e) => setMovementFormData({ ...movementFormData, notes: e.target.value })}
                       placeholder="Reason for adjustment..."
-                      className="w-full px-4 py-3.5 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-medium text-sm min-h-[100px] resize-none"
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white font-medium text-sm min-h-[90px] resize-none"
                     />
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {isProcessing ? 'Saving Changes...' : 'Save Movement'}
-                </button>
+                <div className="p-5 sm:p-6 bg-gray-50/80 dark:bg-gray-900/80 border-t border-gray-100 dark:border-gray-700 shrink-0">
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isProcessing ? 'Saving Changes...' : 'Save Movement'}
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
